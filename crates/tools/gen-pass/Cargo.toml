@@ -1,0 +1,13 @@
+[package]
+name = "gen-pass"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# -- App Crates
+lib-auth = { path = "../../libs/lib-auth" }
+
+# -- Others
+uuid = { workspace = true }
+
+rpassword = "7"

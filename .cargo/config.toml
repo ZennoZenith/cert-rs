@@ -1,0 +1,44 @@
+#
+# Cargo config file.
+# See: https://doc.rust-lang.org/cargo/reference/config.html
+
+# Environments variables set for all "cargo ..." commands.
+[env]
+# Scope down tracing, to filter out external lib tracing.
+RUST_LOG = "web_server=debug,cert_rs_cli=debug,lib_core=debug,lib_web=debug,lib_auth=debug,lib_utils=debug,lib_hotreload=debug"
+
+# -- Service Environment Variables
+# IMPORTANT:
+#   For cargo commands only.
+#   For deployed env, should be managed by container
+#   (e.g., Kubernetes).
+
+## -- Secrets
+# Keys and passwords below are for localhost dev ONLY.
+# e.g., "welcome" type of passwords.
+# i.e., Encryption not needed.
+
+SERVICE_DB_URL = "postgres://postgres:welcome@127.0.0.1:5432/example_db"
+SERVICE_DB_MAX_CONNECTIONS = "5"
+SERVICE_DB_CONNECTION_TIMEOUT_MS = "500"
+
+SERVICE_PWD_KEY = "CKUGFOD9_2Qf6Pn3ZFRYgPYb8ht4vKqEG9PGMXTB7497bT0367DjoaD6ydFnEVaIRda0kKeBZVCT5Hb62m2sCA"
+
+SERVICE_TOKEN_KEY = "9FoHBmkyxbgu_xFoQK7e0jz3RMNVJWgfvbVn712FBNH9LLaAWS3CS6Zpcg6RveiObvCUb6a2z-uAiLjhLh2igw"
+SERVICE_TOKEN_DURATION_SEC = "1800" # 30 minutes
+
+## -- ConfigMap
+
+# SERVICE_HOST_PORT = "127.0.0.1:8080"
+SERVICE_HOST_PORT = "0.0.0.0:8080"
+
+# This will be relative to Cargo.toml
+# In deployed images, probably use absolute path.
+SERVICE_TEMPLATE_FOLDER = "frontend/templates"
+SERVICE_STATIC_FOLDER = "frontend/static"
+
+## Hot reloading configs
+SERVICE_HOT_RELOAD_HARD_RELOAD = "true"
+SERVICE_HOT_RELOAD_AUTO_IGNORE = "false"
+SERVICE_HOT_RELOAD_POLL = "false"
+SERVICE_HOT_RELOAD_DIR = "frontend/"

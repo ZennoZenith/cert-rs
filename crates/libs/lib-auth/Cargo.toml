@@ -1,0 +1,31 @@
+[package]
+name = "lib-auth"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# -- App Libs
+lib-utils = { path = "../../libs/lib-utils" }
+
+# -- Hashing (pwd-scheme02)
+argon2 = { version = "0.5", features = ["std"] }
+blake3 = "1.5.5"
+enum_dispatch = "0.3"
+# -- Hashing (pwd-scheme01 & Token)
+hmac = "0.12"
+lazy-regex = "3"
+# -- Json
+serde = { workspace = true }
+sha2 = "0.10"
+# -- Async
+tokio = { workspace = true }
+# -- Others
+uuid = { workspace = true }
+thiserror = { workspace = true }
+strum_macros = { workspace = true }

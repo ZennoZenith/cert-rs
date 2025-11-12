@@ -1,0 +1,8 @@
+# rustfmt doc - https://rust-lang.github.io/rustfmt/
+
+tab_spaces = 4
+edition = "2024"
+
+max_width = 80
+# chain_width = 40
+# array_width = 40

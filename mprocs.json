@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json.schemastore.org/mprocs-0.6.4.json",
+  "procs": {
+    "server-hot-reload": {
+      "autostart": false,
+      "shell": "just run-server-hot-reload"
+    },
+    "tsc-watch": {
+      "autostart": false,
+      "shell": "just tsc-watch"
+    },
+    "tailwind-watch": {
+      "autostart": false,
+      "shell": "just tailwind-watch",
+      "env": {
+        "NODE_ENV": "test"
+      }
+    },
+    "db": {
+      "autostart": true,
+      "shell": "just dev-db",
+      "stop": { "send-keys": ["<C-c>"] }
+    },
+    "server": {
+      "autostart": false,
+      "shell": "just run-server"
+    },
+    "build": {
+      "autostart": true,
+      "shell": "just build"
+    },
+    "tsc": {
+      "autostart": false,
+      "shell": "just tsc"
+    },
+    "tailwind": {
+      "autostart": false,
+      "shell": "just tailwind",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    },
+    "release": {
+      "autostart": false,
+      "shell": "just run-server-release"
+    }
+  }
+}

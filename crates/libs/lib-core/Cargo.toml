@@ -1,0 +1,36 @@
+[package]
+name = "lib-core"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# -- App Libs
+lib-auth = { path = "../../libs/lib-auth" }
+lib-utils = { path = "../../libs/lib-utils", features = ["serde", "sqlx"] }
+# -- Others
+rand = { workspace = true }
+thiserror = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
+# -- Json
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_with = { workspace = true }
+# -- Data
+sqlx = { workspace = true }
+time = { workspace = true }
+bigdecimal = { workspace = true }
+# -- Async
+tokio = { workspace = true }
+# -- Tracing
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+serial_test = "3"

@@ -1,0 +1,47 @@
+dist/
+out/
+
+# Doc Files
+*.pdf
+*.docx
+*.xlsx
+*.pptx
+*.doc
+*.xls
+*.ppt
+*.page
+
+# Data Files
+*.db3
+*.parquet
+*.map
+*.zip
+*.gz
+*.tar
+*.tgz
+*.vsix
+
+# Videos
+*.mov
+*.mp4
+*.webm
+*.ogg
+*.avi
+
+# # Images
+# *.icns
+# *.ico
+# *.jpeg
+# *.jpg
+# *.png
+# *.bmp
+
+# -- Nodejs
+node_modules/
+!.mocharc.yaml
+report.*.json
+
+# Custom
+mprocs.log
+static/css/build
+static/js/build

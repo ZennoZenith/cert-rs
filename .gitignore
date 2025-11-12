@@ -1,0 +1,4 @@
+.jj/
+.env
+target/
+db/password.txt

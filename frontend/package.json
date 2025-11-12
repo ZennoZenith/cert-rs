@@ -1,0 +1,18 @@
+{
+  "name": "example",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "tsc && tsc-alias"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "daisyui": "^5.3.10",
+    "tailwindcss": "^4.1.16",
+    "tsc-alias": "^1.8.16"
+  },
+  "peerDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "$types": ["./src/types"],
+      "$types/*": ["./src/types/*"],
+      "$utils": ["./src/utils"],
+      "$utils/*": ["./src/utils/*"],
+      "$api": ["./src/api"],
+      "$api/*": ["./src/api/*"],
+      "$constants": ["./src/constants"],
+      "$constants/*": ["./src/constants/*"],
+      "$schemas": ["./src/schemas"],
+      "$schemas/*": ["./src/schemas/*"],
+      "$icons": ["./src/icons"],
+      "$icons/*": ["./src/icons/*"],
+      "$components": ["./src/components"],
+      "$components/*": ["./src/components/*"],
+      "$features": ["./src/features"],
+      "$features/*": ["./src/features/*"],
+      "$lib": ["./src/lib"],
+      "$lib/*": ["./src/lib/*"]
+      // "$root": [
+      //   "./src"
+      // ],
+      // "$root/*": [
+      //   "./src/*"
+      // ]
+    },
+
+    // Environment setup & latest features
+    "target": "ESNext",
+    "module": "ESNext",
+    // "moduleDetection": "force",
+    "allowJs": true,
+    "rootDir": "./src",
+    "esModuleInterop": true,
+    "outDir": "./static/js/build",
+    "forceConsistentCasingInFileNames": true,
+
+    // Best practices
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+
+    // Some stricter flags (disabled by default)
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noPropertyAccessFromIndexSignature": false
+  },
+  "include": ["./src/**/*"]
+}

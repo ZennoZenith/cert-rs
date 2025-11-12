@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="cupcake">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toaster</title>
+    <link rel="stylesheet" href="/static/css/build/tailwind.css">
+    <script src="/static/js/initialThemeLoad.js"></script>
+    <script
+      src="/static/js/build/routes/toast/toasterTest.js"
+      type="module"
+    ></script>
+    <style>
+    </style>
+  </head>
+  <body>
+    <toast-test>
+      <div class="flex flex-wrap gap-4 p-4">
+        <button
+          class="px-4 font-semibold active:scale-98 active:transition-all rounded-full text-info-content bg-info hover:bg-info/95"
+          data-emmit-toast-type="INFO"
+        >
+          Add Info Toast
+        </button>
+        <button
+          class="px-4 font-semibold active:scale-98 active:transition-all rounded-full text-success-content bg-success hover:bg-success/95"
+          data-emmit-toast-type="SUCCESS"
+        >
+          Add Success Toast
+        </button>
+        <button
+          class="px-4 font-semibold active:scale-98 active:transition-all rounded-full text-warning-content bg-warning hover:bg-warning/95"
+          data-emmit-toast-type="WARNING"
+        >
+          Add Warning Toast
+        </button>
+        <button
+          class="px-4 font-semibold active:scale-98 active:transition-all rounded-full text-error-content bg-error hover:bg-error/95"
+          data-emmit-toast-type="ERROR"
+        >
+          Add error Toast
+        </button>
+      </div>
+    </toast-test>
+
+    <theme-toggle>
+      <input
+        type="checkbox"
+        data-theme-toggle
+        class="toggle border-orange-500 bg-orange-400 checked:border-secondary checked:bg-neutral"
+      >
+    </theme-toggle>
+
+    {% include "fragmants/defaultTemplates.html" %}
+  </body>
+</html>

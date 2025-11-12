@@ -1,0 +1,23 @@
+[package]
+name = "lib-hotreload"
+version = "0.1.0"
+edition = "2024"
+description = "Hot reload module, fork of https://github.com/lomirus/live-server"
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# -- App Libs
+lib-utils = { path = "../../libs/lib-utils" }
+
+notify = "8.2.0"
+notify-debouncer-full = "0.6.0"
+tracing = { workspace = true }
+tokio = { workspace = true }
+mime_guess = "2.0.5"
+ignore = "0.4.24"
+path-absolutize = "3.1.1"
