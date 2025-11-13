@@ -2,28 +2,34 @@
 
 pub(in crate::model) mod dbx;
 
-use sqlx::postgres::PgPoolOptions;
-use sqlx::{Pool, Postgres};
+use std::str::FromStr;
+
+use sqlx::{
+    Pool, Sqlite, SqlitePool,
+    sqlite::{SqliteConnectOptions, SqliteJournalMode},
+};
 
 use crate::core_config;
 
 // endregion: --- Modules
 
-pub type Db = Pool<Postgres>;
+pub type Db = Pool<Sqlite>;
 
 pub async fn new_db_pool() -> sqlx::Result<Db> {
-    // * See NOTE 1) below
-    let max_connections = if cfg!(test) {
-        1
-    } else {
-        core_config().DB_MAX_CONNECTIONS
-    };
+    // // * See NOTE 1) below
+    // let max_connections = if cfg!(test) {
+    //     1
+    // } else {
+    //     core_config().DB_MAX_CONNECTIONS
+    // };
 
-    PgPoolOptions::new()
-        .max_connections(max_connections)
-        .acquire_timeout(core_config().DB_CONNECTION_TIMEOUT)
-        .connect(&core_config().DB_URL)
-        .await
+    let opts = SqliteConnectOptions::from_str(&core_config().DB_URL)
+        .expect("Unable to parse db url")
+        .create_if_missing(true)
+        .busy_timeout(core_config().DB_CONNECTION_TIMEOUT)
+        .journal_mode(SqliteJournalMode::Wal);
+
+    SqlitePool::connect_with(opts).await
 }
 
 // NOTE 1) This is not an ideal situation; however, with sqlx 0.7.1, when executing `cargo test`, some tests that use sqlx fail at a

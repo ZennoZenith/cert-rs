@@ -173,6 +173,7 @@ mod tests {
     use crate::token;
     use chrono::Duration;
     use std::thread;
+    use uuid::Uuid;
 
     #[test]
     fn test_token_display_ok() -> Result<()> {

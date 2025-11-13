@@ -1,14 +1,17 @@
-use crate::{ctx::Ctx, model::ModelManager};
+use crate::{
+    ctx::Ctx,
+    model::{ModelManager, store::dbx},
+};
 use lib_auth::pwd::{self, ContentToHash};
 use lib_utils::{b58::b58_encode, time::TimeRfc3339};
 use rand::RngCore as _;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 
 mod error;
 
 pub use error::{Error, Result};
+use uuid::Uuid;
 
 // region:    --- User Types
 #[derive(Clone, Debug, Deserialize, Serialize, strum_macros::Display)]
@@ -103,30 +106,36 @@ impl UserBmc {
         })
         .await?;
 
-        let now = TimeRfc3339::now_utc().inner();
+        let now = TimeRfc3339::now_utc().format_time();
 
-        let sqlx_query = sqlx::query_as::<_, (i64,)>(
-            "insert into users (user_id, name, email, ctime, mtime) values ($1, $2, $3,
-            $4, $4 ) returning serial_id",
+        let sqlx_query = sqlx::query!(
+            "INSERT INTO users (user_id, name, email, ctime, mtime) 
+                VALUES (?, ?, ?, ?, ?) 
+            RETURNING serial_id;",
+            user_id,
+            name,
+            email,
+            now,
+            now,
         )
-        .bind(user_id.as_str())
-        .bind(name)
-        .bind(email)
-        .bind(now);
+        .fetch_one(mm.dbx().db())
+        .await
+        .map_err(dbx::Error::from)?;
 
-        // NOTE: For now, we will use the _txn for all create.
-        //       We could have a with_txn as function argument if perf is an issue (it should not be)
-        let (serial_id,) = mm.dbx().fetch_one(sqlx_query).await?;
+        let serial_id = sqlx_query.serial_id;
 
-        let sqlx_query = sqlx::query(
-            "insert into password_auth (user_serial_id, pwd, pwd_salt, ctime, mtime) values ($1, $2, $3, $4, $4)",
+        let pwd_salt = pwd_salt.into_bytes().to_vec();
+        sqlx::query!(
+            "INSERT INTO password_auth (user_serial_id, pwd, pwd_salt, ctime, mtime) values (?, ?, ?, ?, ?)",
+            serial_id,
+            pwd,
+            pwd_salt,
+            now,
+            now,
         )
-        .bind(serial_id)
-        .bind(pwd)
-        .bind(pwd_salt)
-        .bind(now);
-
-        mm.dbx().execute(sqlx_query).await?;
+        .execute(mm.dbx().db())
+        .await
+        .map_err(dbx::Error::from)?;
 
         // Commit the transaction
         mm.dbx().commit_txn().await?;
@@ -139,15 +148,20 @@ impl UserBmc {
         mm: &ModelManager,
         user_id: &str,
     ) -> Result<UserForLogin> {
-        let sqlx_query = sqlx::query_as::<_, UserForLogin>(
-            "select u.user_id, ut.typ, u.name, u.email, pa.pwd, pa.pwd_salt, pa.token_salt from users u
-                inner join user_type ut on u.user_type_serial_id = ut.serial_id
-                inner join password_auth pa on u.serial_id = pa.user_serial_id
-                where u.user_id = $1 limit 1;",
+        let user = sqlx::query_as!(
+            UserForLogin,
+            r#"SELECT u.user_id, ut.typ, u.name, u.email, pa.pwd, pa.pwd_salt as "pwd_salt: uuid::Uuid", pa.token_salt as "token_salt: uuid::Uuid"
+            FROM users u
+            INNER JOIN user_type ut ON u.user_type_serial_id = ut.serial_id
+            INNER JOIN password_auth pa ON u.serial_id = pa.user_serial_id
+            WHERE u.user_id = ? 
+            LIMIT 1;"#,
+            user_id,
         )
-        .bind(user_id);
-
-        let user = mm.dbx().fetch_optional(sqlx_query).await?.ok_or(
+        .fetch_optional(mm.dbx().db())
+        .await
+        .map_err(dbx::Error::from)?
+        .ok_or(
             Error::UserNotFound {
                 user_id: user_id.into(),
             },
@@ -161,19 +175,20 @@ impl UserBmc {
         mm: &ModelManager,
         email: &str,
     ) -> Result<UserForLogin> {
-        let sqlx_query = sqlx::query_as::<_, UserForLogin>(
-            "select u.user_id, ut.typ, u.name, u.email, pa.pwd, pa.pwd_salt, pa.token_salt from users u
-                inner join user_type ut on u.user_type_serial_id = ut.serial_id
-                inner join password_auth pa on u.serial_id = pa.user_serial_id
-                where u.email = $1 limit 1;",
+        let user = sqlx::query_as!(
+            UserForLogin,
+            r#"SELECT u.user_id, ut.typ, u.name, u.email, pa.pwd, pa.pwd_salt as "pwd_salt: uuid::Uuid", pa.token_salt as "token_salt: uuid::Uuid"
+            FROM users u
+            INNER JOIN user_type ut ON u.user_type_serial_id = ut.serial_id
+            INNER JOIN password_auth pa ON u.serial_id = pa.user_serial_id
+            WHERE u.email = ? 
+            LIMIT 1;"#,
+            email,
         )
-        .bind(email);
-
-        let user = mm
-            .dbx()
-            .fetch_optional(sqlx_query)
-            .await?
-            .ok_or(Error::UserEmailNotFound)?;
+        .fetch_optional(mm.dbx().db())
+        .await
+        .map_err(dbx::Error::from)?
+        .ok_or(Error::UserEmailNotFound)?;
 
         Ok(user)
     }
@@ -183,17 +198,21 @@ impl UserBmc {
         mm: &ModelManager,
         email: &str,
     ) -> Result<Option<UserForAuth>> {
-        let sqlx_query = sqlx::query_as::<_, UserForAuth>(
-            "select u.user_id, ut.typ, u.name, u.email, pa.token_salt from users u
-                inner join user_type ut on u.user_type_serial_id = ut.serial_id
-                inner join password_auth pa on u.serial_id = pa.user_serial_id
-                where u.email = $1 limit 1;",
+        let user = sqlx::query_as!(
+            UserForAuth,
+            r#"SELECT u.user_id, ut.typ, u.name, u.email, pa.token_salt as "token_salt: uuid::Uuid"
+            FROM users u
+            INNER JOIN user_type ut ON u.user_type_serial_id = ut.serial_id
+            INNER JOIN password_auth pa ON u.serial_id = pa.user_serial_id
+            WHERE u.email = ? 
+            LIMIT 1;"#,
+            email,
         )
-        .bind(email);
+        .fetch_optional(mm.dbx().db())
+        .await
+        .map_err(dbx::Error::from)?;
 
-        let user_for_auth = mm.dbx().fetch_optional(sqlx_query).await?;
-
-        Ok(user_for_auth)
+        Ok(user)
     }
 
     pub async fn first_by_user_id(
@@ -201,17 +220,21 @@ impl UserBmc {
         mm: &ModelManager,
         user_id: &str,
     ) -> Result<Option<UserForAuth>> {
-        let sqlx_query = sqlx::query_as::<_, UserForAuth>(
-            "select u.user_id, ut.typ, u.name, u.email, pa.token_salt from users u
-                inner join user_type ut on u.user_type_serial_id = ut.serial_id
-                inner join password_auth pa on u.serial_id = pa.user_serial_id
-                where u.user_id = $1 limit 1;",
+        let user = sqlx::query_as!(
+            UserForAuth,
+            r#"SELECT u.user_id, ut.typ, u.name, u.email, pa.token_salt as "token_salt: uuid::Uuid" 
+            FROM users u
+            INNER JOIN user_type ut ON u.user_type_serial_id = ut.serial_id
+            INNER JOIN password_auth pa ON u.serial_id = pa.user_serial_id
+            WHERE u.user_id = ? 
+            LIMIT 1;"#, 
+            user_id,
         )
-        .bind(user_id);
+        .fetch_optional(mm.dbx().db())
+        .await
+        .map_err(dbx::Error::from)?;
 
-        let user_for_login = mm.dbx().fetch_optional(sqlx_query).await?;
-
-        Ok(user_for_login)
+        Ok(user)
     }
 
     pub async fn first_by_email(
@@ -219,33 +242,21 @@ impl UserBmc {
         mm: &ModelManager,
         email: &str,
     ) -> Result<Option<UserForAuth>> {
-        let sqlx_query = sqlx::query_as::<_, UserForAuth>(
-            "select u.user_id, ut.typ, u.name, u.email, pa.token_salt from users u
-                inner join user_type ut on u.user_type_serial_id = ut.serial_id
-                inner join password_auth pa on u.serial_id = pa.user_serial_id
-                where u.email = $1 limit 1;",
+        let user = sqlx::query_as!(
+            UserForAuth,
+            r#"SELECT u.user_id, ut.typ, u.name, u.email, pa.token_salt as "token_salt: uuid::Uuid" 
+            FROM users u
+            INNER JOIN user_type ut ON u.user_type_serial_id = ut.serial_id
+            INNER JOIN password_auth pa ON u.serial_id = pa.user_serial_id
+            WHERE u.email = ? 
+            LIMIT 1;"#,
+            email,
         )
-        .bind(email);
+        .fetch_optional(mm.dbx().db())
+        .await
+        .map_err(dbx::Error::from)?;
 
-        let user_for_login = mm.dbx().fetch_optional(sqlx_query).await?;
-
-        Ok(user_for_login)
-    }
-
-    pub async fn list(
-        _ctx: &Ctx,
-        mm: &ModelManager,
-        // filter: Option<Vec<UserFilter>>,
-        // list_options: Option<ListOptions>,
-    ) -> Result<Vec<User>> {
-        let sqlx_query = sqlx::query_as::<_, User>(
-            "select u.user_id, u.name, u.email, ut.typ from users u
-            inner join user_type ut on u.user_type_serial_id = ut.serial_id;",
-        );
-
-        let users = mm.dbx().fetch_all(sqlx_query).await?;
-
-        Ok(users)
+        Ok(user)
     }
 
     pub async fn update_pwd(
@@ -263,14 +274,14 @@ impl UserBmc {
         })
         .await?;
 
-        let now = TimeRfc3339::now_utc().inner();
+        let now = TimeRfc3339::now_utc().format_time();
 
         let sqlx_query = sqlx::query(
-            "update password_auth set
-              pwd = $2,
-              mtime = $3
-            where user_serial_id = (select serial_id from users
-              where user_id = $1);",
+            "UPDATE password_auth SET
+                pwd = ?,
+                mtime = ?
+            WHERE user_serial_id = (SELECT serial_id FROM users
+                WHERE user_id = ?);",
         )
         .bind(user_id)
         .bind(pwd)
@@ -294,19 +305,19 @@ impl UserBmc {
         user_id: &str,
     ) -> Result<()> {
         let sqlx_query = sqlx::query(
-            "delete from password_auth 
-                where user_serial_id = (
-                    select serial_id from users
-                        where user_id = $1
-                    limit 1
-                );",
+            "DELETE FROM password_auth 
+            WHERE user_serial_id = (
+                SELECT serial_id FROM users
+                WHERE user_id = ?
+                LIMIT 1
+            );",
         )
         .bind(user_id);
         let _count = mm.dbx().execute(sqlx_query).await?;
 
         let sqlx_query = sqlx::query(
-            "delete from users 
-                where user_id = $1;",
+            "DELETE FROM users 
+                WHERE user_id = ?;",
         )
         .bind(user_id);
 
@@ -328,11 +339,11 @@ mod tests {
     use super::*;
     use crate::_dev_utils;
     // use serial_test::serial;
-    use sqlx::{Pool, Postgres};
+    use sqlx::{Pool, Sqlite};
 
     // #[serial]
     #[sqlx::test(migrations = false)]
-    async fn test_create_ok(pool: Pool<Postgres>) -> Result<()> {
+    async fn test_create_ok(pool: Pool<Sqlite>) -> Result<()> {
         // -- Setup & Fixtures
         let mm = _dev_utils::init_test_db(pool).await?;
         let ctx = Ctx::root_ctx();
@@ -365,7 +376,7 @@ mod tests {
 
     // #[serial]
     #[sqlx::test(migrations = false)]
-    async fn test_first_ok_demo1(pool: Pool<Postgres>) -> Result<()> {
+    async fn test_first_ok_demo1(pool: Pool<Sqlite>) -> Result<()> {
         // -- Setup & Fixtures
         let mm = _dev_utils::init_test_db(pool).await?;
         let ctx = Ctx::root_ctx();

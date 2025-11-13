@@ -6,7 +6,7 @@ pub use error::{Error, Result, UniqueViolation};
 
 use crate::model::store::Db;
 use sqlx::query::{Query, QueryAs};
-use sqlx::{FromRow, IntoArguments, Pool, Postgres, Transaction};
+use sqlx::{FromRow, IntoArguments, Pool, Sqlite, Transaction};
 use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -33,12 +33,12 @@ impl Dbx {
 
 #[derive(Debug)]
 struct TxnHolder {
-    txn: Transaction<'static, Postgres>,
+    txn: Transaction<'static, Sqlite>,
     counter: i32,
 }
 
 impl TxnHolder {
-    fn new(txn: Transaction<'static, Postgres>) -> Self {
+    fn new(txn: Transaction<'static, Sqlite>) -> Self {
         TxnHolder { txn, counter: 1 }
     }
 
@@ -53,7 +53,7 @@ impl TxnHolder {
 }
 
 impl Deref for TxnHolder {
-    type Target = Transaction<'static, Postgres>;
+    type Target = Transaction<'static, Sqlite>;
 
     fn deref(&self) -> &Self::Target {
         &self.txn
@@ -129,19 +129,17 @@ impl Dbx {
         }
     }
 
-    pub fn db(&self) -> &Pool<Postgres> {
+    pub fn db(&self) -> &Pool<Sqlite> {
         &self.db_pool
     }
 
     pub async fn fetch_one<'q, O, A>(
         &self,
-        query: QueryAs<'q, Postgres, O, A>,
+        query: QueryAs<'q, Sqlite, O, A>,
     ) -> Result<O>
     where
-        O: for<'r> FromRow<'r, <Postgres as sqlx::Database>::Row>
-            + Send
-            + Unpin,
-        A: IntoArguments<'q, Postgres> + 'q,
+        O: for<'r> FromRow<'r, <Sqlite as sqlx::Database>::Row> + Send + Unpin,
+        A: IntoArguments<'q, Sqlite> + 'q,
     {
         let data = if self.with_txn {
             let mut txh_g = self.txn_holder.lock().await;
@@ -159,13 +157,11 @@ impl Dbx {
 
     pub async fn fetch_optional<'q, O, A>(
         &self,
-        query: QueryAs<'q, Postgres, O, A>,
+        query: QueryAs<'q, Sqlite, O, A>,
     ) -> Result<Option<O>>
     where
-        O: for<'r> FromRow<'r, <Postgres as sqlx::Database>::Row>
-            + Send
-            + Unpin,
-        A: IntoArguments<'q, Postgres> + 'q,
+        O: for<'r> FromRow<'r, <Sqlite as sqlx::Database>::Row> + Send + Unpin,
+        A: IntoArguments<'q, Sqlite> + 'q,
     {
         let data = if self.with_txn {
             let mut txh_g = self.txn_holder.lock().await;
@@ -183,13 +179,11 @@ impl Dbx {
 
     pub async fn fetch_all<'q, O, A>(
         &self,
-        query: QueryAs<'q, Postgres, O, A>,
+        query: QueryAs<'q, Sqlite, O, A>,
     ) -> Result<Vec<O>>
     where
-        O: for<'r> FromRow<'r, <Postgres as sqlx::Database>::Row>
-            + Send
-            + Unpin,
-        A: IntoArguments<'q, Postgres> + 'q,
+        O: for<'r> FromRow<'r, <Sqlite as sqlx::Database>::Row> + Send + Unpin,
+        A: IntoArguments<'q, Sqlite> + 'q,
     {
         let data = if self.with_txn {
             let mut txh_g = self.txn_holder.lock().await;
@@ -207,10 +201,10 @@ impl Dbx {
 
     pub async fn execute<'q, A>(
         &self,
-        query: Query<'q, Postgres, A>,
+        query: Query<'q, Sqlite, A>,
     ) -> Result<u64>
     where
-        A: IntoArguments<'q, Postgres> + 'q,
+        A: IntoArguments<'q, Sqlite> + 'q,
     {
         let row_affected = if self.with_txn {
             let mut txh_g = self.txn_holder.lock().await;

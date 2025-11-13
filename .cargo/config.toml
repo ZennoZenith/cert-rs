@@ -18,7 +18,7 @@ RUST_LOG = "web_server=debug,cert_rs_cli=debug,lib_core=debug,lib_web=debug,lib_
 # e.g., "welcome" type of passwords.
 # i.e., Encryption not needed.
 
-SERVICE_DB_URL = "postgres://postgres:welcome@127.0.0.1:5432/example_db"
+SERVICE_DB_URL = "sqlite://data.db"
 SERVICE_DB_MAX_CONNECTIONS = "5"
 SERVICE_DB_CONNECTION_TIMEOUT_MS = "500"
 

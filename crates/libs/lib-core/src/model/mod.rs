@@ -28,7 +28,7 @@ use crate::model::store::dbx::Dbx;
 use crate::model::store::new_db_pool;
 
 #[cfg(test)]
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Sqlite};
 
 // endregion: --- Modules
 
@@ -49,7 +49,7 @@ impl ModelManager {
     }
 
     #[cfg(test)]
-    pub async fn new_with_pool(db_pool: Pool<Postgres>) -> Result<Self> {
+    pub async fn new_with_pool(db_pool: Pool<Sqlite>) -> Result<Self> {
         let dbx = Dbx::new(db_pool, false);
         Ok(ModelManager { dbx })
     }

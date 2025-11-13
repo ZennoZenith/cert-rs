@@ -2,3 +2,4 @@
 .env
 target/
 db/password.txt
+data.db*

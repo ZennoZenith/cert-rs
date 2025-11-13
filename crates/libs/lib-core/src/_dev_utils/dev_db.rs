@@ -1,6 +1,6 @@
 use crate::model::ModelManager;
 use sqlx::migrate::Migrator;
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Sqlite};
 use std::path::{Path, PathBuf};
 use tracing::info;
 
@@ -8,7 +8,7 @@ const MIGRATION_DIR: &str = "db/migrations";
 const DEV_INITIAL_SEED_USER: &str = "db/fixtures/dev-seed-user.sql";
 
 pub async fn init_test_db(
-    pool: Pool<Postgres>,
+    pool: Pool<Sqlite>,
 ) -> Result<ModelManager, Box<dyn std::error::Error>> {
     info!("{:<12} - init_dev_db()", "FOR-DEV-ONLY");
 
@@ -34,10 +34,7 @@ pub async fn init_test_db(
     Ok(ModelManager::new_with_pool(pool).await?)
 }
 
-pub async fn pexec(
-    db: &Pool<Postgres>,
-    file: &Path,
-) -> Result<(), sqlx::Error> {
+pub async fn pexec(db: &Pool<Sqlite>, file: &Path) -> Result<(), sqlx::Error> {
     use std::fs;
     info!("{:<12} - pexec: {file:?}", "FOR-DEV-ONLY");
 
