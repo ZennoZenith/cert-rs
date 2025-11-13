@@ -9,6 +9,7 @@ edition = "2024"
 axum = { workspace = true }
 # lib-auth = { path = "../../libs/lib-auth" }
 lib-core = { path = "../../libs/lib-core" }
+lib-acme = { path = "../../libs/lib-acme" }
 # lib-utils = { path = "../../libs/lib-utils" }
 # lib-web = { path = "../../libs/lib-web" }
 # lib-cli = { path = "../../libs/lib-cli" }

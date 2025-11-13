@@ -329,6 +329,7 @@ dependencies = [
  "clap",
  "color-eyre",
  "inquire",
+ "lib-acme",
  "lib-core",
  "reqwest",
  "serde",
@@ -1656,6 +1657,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
  "spin",
+]
+
+[[package]]
+name = "lib-acme"
+version = "0.1.0"
+dependencies = [
+ "color-eyre",
+ "lib-core",
+ "lib-utils",
+ "openssl",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "sha2",
+ "strum",
+ "strum_macros",
+ "thiserror 2.0.17",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
 ]
 
 [[package]]

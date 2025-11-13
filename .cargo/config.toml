@@ -5,7 +5,7 @@
 # Environments variables set for all "cargo ..." commands.
 [env]
 # Scope down tracing, to filter out external lib tracing.
-RUST_LOG = "web_server=debug,cert_rs_cli=debug,lib_core=debug,lib_web=debug,lib_auth=debug,lib_utils=debug,lib_hotreload=debug"
+RUST_LOG = "web_server=debug,cert_rs_cli=debug,lib_core=debug,lib_acme=debug,lib_web=debug,lib_auth=debug,lib_utils=debug,lib_hotreload=debug"
 
 # -- Service Environment Variables
 # IMPORTANT:

@@ -1,10 +1,6 @@
 use serde::Deserialize;
 use url::Url;
 
-use crate::model::Error;
-
-pub type Result<T> = std::result::Result<T, Error>;
-
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcmeDirectory {

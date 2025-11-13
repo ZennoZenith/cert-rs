@@ -9,6 +9,7 @@ members = [
   "crates/libs/lib-auth",
   "crates/libs/lib-core",
   "crates/libs/lib-utils",
+  "crates/libs/lib-acme",
   "crates/libs/lib-web",
   "crates/libs/lib-hotreload",
   # -- Application Services
