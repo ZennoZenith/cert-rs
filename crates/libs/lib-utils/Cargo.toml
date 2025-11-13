@@ -12,6 +12,7 @@ workspace = true
 [dependencies]
 base58 = "0.2"
 base64 = "0.22"
+hex = "0.4"
 chrono = { workspace = true }
 thiserror = { workspace = true }
 strum_macros = { workspace = true }

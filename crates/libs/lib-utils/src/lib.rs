@@ -3,4 +3,5 @@
 pub mod b58;
 pub mod b64;
 pub mod envs;
+pub mod hex;
 pub mod time;

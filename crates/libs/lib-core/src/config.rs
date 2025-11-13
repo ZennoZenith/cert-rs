@@ -1,5 +1,8 @@
-use lib_utils::envs::{DefaultIfMissing, get_env, get_env_parse};
+use lib_utils::envs::{IfMissing, get_env, get_env_parse};
 use std::{sync::OnceLock, time::Duration};
+
+#[cfg(test)]
+use url::Url;
 
 pub fn core_config() -> &'static CoreConfig {
     static INSTANCE: OnceLock<CoreConfig> = OnceLock::new();
@@ -17,6 +20,8 @@ pub struct CoreConfig {
     pub DB_URL: String,
     pub DB_MAX_CONNECTIONS: u32,
     pub DB_CONNECTION_TIMEOUT: Duration,
+    #[cfg(test)]
+    pub TEST_ACME_URI: Url,
 }
 
 impl CoreConfig {
@@ -28,10 +33,17 @@ impl CoreConfig {
                 .if_missing(500)
                 .map(Duration::from_millis)?;
 
+        #[cfg(test)]
+        let test_acme_url = get_env_parse::<Url>("TEST_ACME_URI")
+            .if_missing(Url::parse("http://example.com").unwrap())?;
+
         Ok(CoreConfig {
             DB_URL: get_env("SERVICE_DB_URL")?,
             DB_MAX_CONNECTIONS: db_max_connections,
             DB_CONNECTION_TIMEOUT: db_connections_timeout,
+
+            #[cfg(test)]
+            TEST_ACME_URI: test_acme_url,
         })
     }
 }

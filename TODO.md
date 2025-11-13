@@ -1,4 +1,3 @@
-- change bigint ids to int
 - Option monad, use when reading theme value from local storage
 - update rust examples
 - Form validation

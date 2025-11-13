@@ -91,6 +91,9 @@ run-gen-key:
 run-gen-pass:
     cargo run -p gen-pass
 
+run-playground:
+    cargo run -p playground
+
 sqlx-migrate-add desc:
     sqlx migrate add --source ./db/migrations/ {{desc}}
     

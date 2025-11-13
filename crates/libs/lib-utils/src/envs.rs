@@ -6,6 +6,9 @@ use std::str::FromStr;
 
 pub trait DefaultIfMissing<T> {
     fn default_if_missing(self) -> Result<T>;
+}
+
+pub trait IfMissing<T> {
     fn if_missing(self, value: T) -> Result<T>;
 }
 
@@ -27,7 +30,8 @@ impl<T: Default> DefaultIfMissing<T> for Result<T> {
             _ => self,
         }
     }
-
+}
+impl<T> IfMissing<T> for Result<T> {
     fn if_missing(self, value: T) -> Result<T> {
         match self {
             Err(Error::MissingEnv(env_name)) => {

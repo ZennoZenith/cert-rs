@@ -21,6 +21,12 @@ impl Ctx {
         }
     }
 
+    pub fn cli_ctx() -> Self {
+        Ctx {
+            user_id: Arc::from("cli"),
+        }
+    }
+
     pub fn new(user_id: &str) -> Result<Self> {
         if "root" == user_id {
             Err(Error::CtxCannotNewRootCtx)

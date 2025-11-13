@@ -13,9 +13,11 @@ members = [
   "crates/libs/lib-hotreload",
   # -- Application Services
   "crates/services/web-server",
+  "crates/services/cli",
   # -- Tools
   "crates/tools/gen-key",
   "crates/tools/gen-pass",
+  "crates/tools/playground",
 ]
 
 [workspace.dependencies]
@@ -45,3 +47,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "fast-rng"] }
 url = { version = "2", features = ["serde"] }
 reqwest = { version = "0.12", features = ["json"] }
+openssl = { version = "0.10", features = ["vendored"] }
+sha2 = "0.10"
