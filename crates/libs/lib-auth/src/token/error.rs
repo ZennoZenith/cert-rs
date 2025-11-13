@@ -12,4 +12,8 @@ pub enum Error {
     SignatureNotMatching,
     ExpNotIso,
     Expired,
+
+    // -- External Modules
+    #[error(transparent)]
+    TimeOutOfRange(#[from] lib_utils::time::TimeOutOrRange),
 }

@@ -6,12 +6,11 @@ unsafe_code = "forbid"
 resolver = "2"
 members = [
   # -- Application Libraries
-  "crates/libs/lib-auth", # e.g., for pwd, token.
-  "crates/libs/lib-core", # e.g., model, ctx, config.
-
-  "crates/libs/lib-hotreload",
+  "crates/libs/lib-auth",
+  "crates/libs/lib-core",
   "crates/libs/lib-utils",
   "crates/libs/lib-web",
+  "crates/libs/lib-hotreload",
   # -- Application Services
   "crates/services/web-server",
   # -- Tools
@@ -19,27 +18,24 @@ members = [
   "crates/tools/gen-pass",
 ]
 
-# NOTE: Only the crates that are utilized in two or more sub-crates and benefit from global management
-#       are handled in workspace.dependencies. Other strategies may also be valid.
 [workspace.dependencies]
 # -- Serde
 axum = { version = "0.8", features = ["macros", "ws"] }
-bigdecimal = { version = "0.4", features = ["serde"] }
 chrono = "0.4"
-# derive_more = { version = "2", features = ["from", "display"] }
 rand = "0.9"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_with = { version = "3", features = ["time_0_3"] }
+serde_with = { version = "3" }
+
 # -- Data
-# Note: we lock modql version during rcs
-sqlx = { version = "0.8", features = ["macros", "runtime-tokio", "postgres", "uuid", "time", "chrono", "bigdecimal"] }
+sqlx = { version = "0.8", features = ["macros", "runtime-tokio", "sqlite", "uuid", "chrono"] }
 strum = "0.27"
 strum_macros = "0.27"
 
 # -- Others
-thiserror = { version = "2" }
-time = { version = "0.3", features = ["formatting", "parsing", "serde"] }
+thiserror = "2"
+color-eyre = "0.6"
+
 # -- Web
 tokio = { version = "1", features = ["full"] }
 tower-cookies = "0.11"
@@ -47,3 +43,5 @@ tower-http = { version = "0.6", features = ["fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 uuid = { version = "1", features = ["v4", "fast-rng"] }
+url = { version = "2", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json"] }

@@ -12,11 +12,11 @@ workspace = true
 [dependencies]
 base58 = "0.2"
 base64 = "0.22"
-time = { workspace = true }
+chrono = { workspace = true }
 thiserror = { workspace = true }
 strum_macros = { workspace = true }
 serde = { workspace = true, optional = true }
-sqlx = { workspace = true, optional = true, features = ["postgres", "time"] }
+sqlx = { workspace = true, optional = true, features = ["chrono"] }
 tracing = { workspace = true, optional = true }
 
 [features]

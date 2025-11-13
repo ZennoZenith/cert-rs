@@ -27,5 +27,6 @@ sha2 = "0.10"
 tokio = { workspace = true }
 # -- Others
 uuid = { workspace = true }
+chrono = { workspace = true }
 thiserror = { workspace = true }
 strum_macros = { workspace = true }

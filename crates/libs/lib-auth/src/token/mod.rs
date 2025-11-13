@@ -5,6 +5,7 @@ mod error;
 pub use self::error::{Error, Result};
 
 use crate::config::auth_config;
+use chrono::Duration;
 use lib_utils::b64::{b64u_decode_to_string, b64u_encode};
 use lib_utils::time::TimeRfc3339;
 use std::fmt::Display;
@@ -86,13 +87,13 @@ pub fn validate_web_token(origin_token: &Token, salt: Uuid) -> Result<()> {
 
 fn generate_token(
     ident: &str,
-    duration_sec: f64,
+    duration: Duration,
     token_salt: Uuid,
     key: &[u8],
 ) -> Result<Token> {
     // -- Compute the two first components.
     let ident = ident.to_string();
-    let exp = TimeRfc3339::now_utc_plus_sec_str(duration_sec);
+    let exp = TimeRfc3339::now_utc_plus_sec_str(duration)?;
 
     // -- Sign the two first components.
     let sign_b64u = token_sign_into_b64u(&ident, &exp, token_salt, key)?;
@@ -123,7 +124,8 @@ fn validate_token_sign_and_exp(
 
     // -- Validate expiration.
     let origin_exp = TimeRfc3339::parse_utc(&origin_token.exp)
-        .map_err(|_| Error::ExpNotIso)?;
+        .map_err(|_| Error::ExpNotIso)?
+        .inner();
     let now = TimeRfc3339::now_utc().inner();
 
     if origin_exp < now {
@@ -169,8 +171,8 @@ mod tests {
 
     use super::*;
     use crate::token;
+    use chrono::Duration;
     use std::thread;
-    use std::time::Duration;
 
     #[test]
     fn test_token_display_ok() -> Result<()> {
@@ -213,13 +215,13 @@ mod tests {
         let fx_user = "user_one";
         let fx_salt =
             Uuid::parse_str("f05e8961-d6ad-4086-9e78-a6de065e5453").unwrap();
-        let fx_duration_sec = 0.02; // 20ms
+        let fx_duration = Duration::milliseconds(20);
         let token_key = &auth_config().TOKEN_KEY;
         let fx_token =
-            generate_token(fx_user, fx_duration_sec, fx_salt, token_key)?;
+            generate_token(fx_user, fx_duration, fx_salt, token_key)?;
 
         // -- Exec
-        thread::sleep(Duration::from_millis(10));
+        thread::sleep(std::time::Duration::from_millis(10));
         let res = validate_web_token(&fx_token, fx_salt);
 
         // -- Check
@@ -234,13 +236,13 @@ mod tests {
         let fx_user = "user_one";
         let fx_salt =
             Uuid::parse_str("f05e8961-d6ad-4086-9e78-a6de065e5453").unwrap();
-        let fx_duration_sec = 0.01; // 10ms
+        let fx_duration = Duration::milliseconds(10);
         let token_key = &auth_config().TOKEN_KEY;
         let fx_token =
-            generate_token(fx_user, fx_duration_sec, fx_salt, token_key)?;
+            generate_token(fx_user, fx_duration, fx_salt, token_key)?;
 
         // -- Exec
-        thread::sleep(Duration::from_millis(20));
+        thread::sleep(std::time::Duration::from_millis(20));
         let res = validate_web_token(&fx_token, fx_salt);
 
         // -- Check
