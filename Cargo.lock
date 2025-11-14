@@ -1672,6 +1672,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "sha2",
+ "sqlx",
  "strum",
  "strum_macros",
  "thiserror 2.0.17",

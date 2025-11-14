@@ -1,61 +1,66 @@
-use std::sync::Arc;
-
-pub use error::Error;
+use std::{str::FromStr, sync::Arc};
 
 use lib_utils::b64;
+
+use color_eyre::Result;
 use openssl::{
-    pkey::{Private, Public},
+    hash::MessageDigest,
+    pkey::{PKey, Private, Public},
     rsa::Rsa,
+    sign::Signer,
 };
 use serde::Serialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use url::Url;
 
-use crate::model::acme::account::{AcmeAccount, KeyType};
+use crate::acme_bmc::AcmeAccount;
 
-pub type Result<T> = std::result::Result<T, Error>;
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Default,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
+)]
+#[strum(ascii_case_insensitive)]
+#[non_exhaustive]
+pub enum KeyType {
+    #[default]
+    #[serde(rename = "RSA")]
+    Rsa,
+}
 
-mod error {
-    use serde::Serialize;
-    use serde_with::serde_as;
-
-    #[serde_as]
-    #[derive(thiserror::Error, Debug, Serialize, strum_macros::Display)]
-    pub enum Error {
-        PrivateKeyGeneration(String),
-        DomainKeyGeneration(String),
-        PublicKeyFromPem(String),
-        PrivateKeyFromPem(String),
-        DomainKeyFromPem(String),
+impl From<String> for KeyType {
+    fn from(value: String) -> Self {
+        Self::from_str(&value).unwrap_or_default()
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct AccountCert {
     pub(crate) private_key: Rsa<Private>,
     pub(crate) public_key: Rsa<Public>,
-    pub(crate) domain_key: Rsa<Private>,
+    pub(crate) _domain_key: Rsa<Private>,
     pub(crate) key_type: KeyType,
 }
 
 impl AccountCert {
     pub fn new() -> Result<Self> {
-        let private_key = Rsa::generate(4096)
-            .map_err(|e| Error::PrivateKeyGeneration(e.to_string()))?;
+        let private_key = Rsa::generate(4096)?;
 
-        let public_key_pem = private_key
-            .public_key_to_pem()
-            .expect("Unable to get public key pair from private key");
-
-        let public_key = Rsa::public_key_from_pem(&public_key_pem)
-            .map_err(|e| Error::PublicKeyFromPem(e.to_string()))?;
-
-        let domain_key = Rsa::generate(4096)
-            .map_err(|e| Error::DomainKeyGeneration(e.to_string()))?;
+        let public_key_pem = private_key.public_key_to_pem()?;
+        let public_key = Rsa::public_key_from_pem(&public_key_pem)?;
+        let domain_key = Rsa::generate(4096)?;
 
         Ok(Self {
             private_key,
             public_key,
-            domain_key,
+            _domain_key: domain_key,
             key_type: KeyType::Rsa,
         })
     }
@@ -65,53 +70,16 @@ impl AccountCert {
         public_key: &[u8],
         domain_key: &[u8],
     ) -> Result<Self> {
-        let public_key = Rsa::<Public>::public_key_from_pem(public_key)
-            .map_err(|e| Error::PublicKeyFromPem(e.to_string()))?;
-
-        let domain_key = Rsa::<Private>::private_key_from_pem(domain_key)
-            .map_err(|e| Error::DomainKeyFromPem(e.to_string()))?;
-
-        let private_key = Rsa::<Private>::private_key_from_pem(private_key)
-            .map_err(|e| Error::PrivateKeyFromPem(e.to_string()))?;
+        let public_key = Rsa::<Public>::public_key_from_pem(public_key)?;
+        let domain_key = Rsa::<Private>::private_key_from_pem(domain_key)?;
+        let private_key = Rsa::<Private>::private_key_from_pem(private_key)?;
 
         Ok(Self {
             private_key,
             public_key,
-            domain_key,
+            _domain_key: domain_key,
             key_type: KeyType::Rsa,
         })
-    }
-
-    // pub fn private_key(&self) -> &Rsa<Private> {
-    //     &self.private_key
-    // }
-
-    // pub fn public_key(&self) -> &Rsa<Public> {
-    //     &self.public_key
-    // }
-
-    // pub fn domain_key(&self) -> &Rsa<Private> {
-    //     &self._domain_key
-    // }
-}
-
-impl TryFrom<AcmeAccount> for AccountCert {
-    type Error = &'static str;
-
-    fn try_from(value: AcmeAccount) -> std::result::Result<Self, Self::Error> {
-        let AcmeAccount {
-            private_key_pem,
-            public_key_pem,
-            domain_key_pem,
-            ..
-        } = value;
-
-        AccountCert::from_blob(
-            &private_key_pem,
-            &public_key_pem,
-            &domain_key_pem,
-        )
-        .map_err(|_| "error")
     }
 }
 
@@ -165,11 +133,129 @@ impl From<AccountCert> for Jwk {
     }
 }
 
-// impl Jwk {
-//     pub fn jwk_thumbprint(&self) -> &str {
-//         &self.jwk_thumbprint
-//     }
-// }
+#[derive(Debug, Serialize)]
+pub(crate) enum JwsAlgorithm {
+    RS256,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct JwsProtectedHeaders<'a> {
+    #[serde(rename = "alg")]
+    pub(crate) algorithm: JwsAlgorithm,
+    pub(crate) url: &'a Url,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) jwk: Option<Jwk>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) kid: Option<&'a Url>,
+    pub(crate) nonce: &'a str,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct Jws {
+    protected: String,
+    payload: String,
+    signature: String,
+}
+
+impl Jws {
+    pub fn new<T: Serialize>(
+        private_key: Rsa<Private>,
+        jws_protected_headers: &JwsProtectedHeaders,
+        body: Option<T>,
+    ) -> Result<Self> {
+        let protected = b64::b64u_encode(
+            serde_json::to_string(&jws_protected_headers)
+                .expect("Unable to serialize jws_protected_headers"),
+        );
+
+        // If body is present serialize to string else set empty string
+        let payload = body
+            .map(|v| {
+                b64::b64u_encode(
+                    serde_json::to_string(&v)
+                        .expect("Unable to serialize body"),
+                )
+            })
+            .unwrap_or_default();
+
+        let signature = format!("{protected}.{payload}");
+
+        let keypair = PKey::from_rsa(private_key)?;
+
+        let mut signer = Signer::new(MessageDigest::sha256(), &keypair)?;
+        signer.update(signature.as_bytes())?;
+        let signature = signer.sign_to_vec()?;
+
+        let signature = b64::b64u_encode(signature);
+
+        Ok(Self {
+            protected,
+            payload,
+            signature,
+        })
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Account {
+    account_id: Url,
+    cert: AccountCert,
+    jwk: Jwk,
+}
+
+impl Account {
+    pub fn new(account_id: Url, cert: AccountCert) -> Account {
+        let jwk = (&cert).into();
+
+        Self {
+            account_id,
+            cert,
+            jwk,
+        }
+    }
+
+    pub fn account_id(&self) -> &Url {
+        &self.account_id
+    }
+
+    pub fn cert(&self) -> &AccountCert {
+        &self.cert
+    }
+
+    pub fn jwk(&self) -> &Jwk {
+        &self.jwk
+    }
+}
+
+impl TryFrom<AcmeAccount> for Account {
+    type Error = color_eyre::eyre::Error;
+
+    fn try_from(value: AcmeAccount) -> std::result::Result<Self, Self::Error> {
+        let AcmeAccount {
+            account_id,
+            private_key_pem,
+            public_key_pem,
+            domain_key_pem,
+            key_type,
+            ..
+        } = value;
+
+        let account_id = account_id.parse()?;
+        let cert = AccountCert {
+            private_key: Rsa::private_key_from_pem(&private_key_pem)?,
+            public_key: Rsa::public_key_from_pem(&public_key_pem)?,
+            _domain_key: Rsa::private_key_from_pem(&domain_key_pem)?,
+            key_type,
+        };
+        let jwk = (&cert).into();
+
+        Ok(Self {
+            account_id,
+            cert,
+            jwk,
+        })
+    }
+}
 
 // region:    --- Tests
 #[cfg(test)]

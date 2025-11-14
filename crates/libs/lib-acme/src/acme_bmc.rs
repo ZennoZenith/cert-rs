@@ -1,40 +1,48 @@
 use std::{ops::Deref, str::FromStr};
 
+use lib_core::model::ModelManager;
 use lib_utils::time::TimeRfc3339;
 
 use color_eyre::Result;
-use serde::Serialize;
 use sqlx::prelude::FromRow;
 use url::Url;
 
-use crate::{
-    ctx::Ctx,
-    model::{ModelManager, acme::api::AccountCert, store::dbx},
-};
+use crate::account::{Account, AccountCert, KeyType};
 
-#[derive(
-    Debug,
-    Clone,
-    Serialize,
-    Default,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
-)]
-#[strum(ascii_case_insensitive)]
-#[non_exhaustive]
-pub enum KeyType {
-    #[default]
-    #[serde(rename = "RSA")]
-    Rsa,
+#[derive(Debug, sqlx::Type)]
+#[sqlx(transparent)]
+pub struct AccountId(Box<str>);
+
+impl From<String> for AccountId {
+    fn from(value: String) -> Self {
+        Self(Box::from(value))
+    }
 }
 
-impl From<String> for KeyType {
-    fn from(value: String) -> Self {
-        Self::from_str(&value).unwrap_or_default()
+impl From<Url> for AccountId {
+    fn from(value: Url) -> Self {
+        Self(Box::from(value.as_str()))
     }
+}
+
+impl Deref for AccountId {
+    type Target = Box<str>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, FromRow)]
+pub struct AcmeAccount {
+    pub serial_id: i64,
+    pub account_id: AccountId,
+    pub private_key_pem: Vec<u8>,
+    pub public_key_pem: Vec<u8>,
+    pub domain_key_pem: Vec<u8>,
+    pub key_type: KeyType,
+    pub mtime: String,
+    pub ctime: String,
 }
 
 impl<'r> sqlx::Decode<'r, sqlx::Sqlite> for KeyType
@@ -80,55 +88,35 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for KeyType {
     }
 }
 
-#[derive(Debug, sqlx::Type)]
-#[sqlx(transparent)]
-pub struct AccountId(Box<str>);
+impl TryFrom<AcmeAccount> for AccountCert {
+    type Error = &'static str;
 
-impl From<String> for AccountId {
-    fn from(value: String) -> Self {
-        Self(Box::from(value))
+    fn try_from(value: AcmeAccount) -> std::result::Result<Self, Self::Error> {
+        let AcmeAccount {
+            private_key_pem,
+            public_key_pem,
+            domain_key_pem,
+            ..
+        } = value;
+
+        AccountCert::from_blob(
+            &private_key_pem,
+            &public_key_pem,
+            &domain_key_pem,
+        )
+        .map_err(|_| "error")
     }
-}
-
-impl AccountId {
-    pub fn new(account_id: Url) -> Self {
-        Self(Box::from(account_id.as_str()))
-    }
-}
-
-impl Deref for AccountId {
-    type Target = Box<str>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[derive(Debug, FromRow)]
-pub struct AcmeAccount {
-    pub serial_id: i64,
-    pub account_id: AccountId,
-    pub private_key_pem: Vec<u8>,
-    pub public_key_pem: Vec<u8>,
-    pub domain_key_pem: Vec<u8>,
-    pub key_type: KeyType,
-    pub mtime: String,
-    pub ctime: String,
 }
 
 pub struct AcmeAccountBmc;
 
 impl AcmeAccountBmc {
-    pub async fn create(
-        _ctx: &Ctx,
-        mm: &ModelManager,
-        account_c: (AccountId, AccountCert),
-    ) -> Result<i64> {
-        let (account_id, account_cert) = account_c;
-
+    pub async fn create(mm: &ModelManager, account_c: &Account) -> Result<i64> {
+        let account_cert = account_c.cert();
         let private_key_pem = account_cert.private_key.private_key_to_pem()?;
         let public_key_pem = account_cert.public_key.public_key_to_pem()?;
-        let domain_key_pem = account_cert.domain_key.private_key_to_pem()?;
+        let domain_key_pem = account_cert._domain_key.private_key_to_pem()?;
+        let account_id = account_c.account_id().as_str();
 
         // Start the transaction
         let mm = mm.new_with_txn();
@@ -137,7 +125,7 @@ impl AcmeAccountBmc {
 
         let now = TimeRfc3339::now_utc().format_time();
 
-        let key_type: &'static str = account_cert.key_type.into();
+        let key_type: &'static str = account_cert.key_type.clone().into();
 
         let sqlx_query = sqlx::query!(
             "INSERT INTO acme_account (account_id, private_key_pem, public_key_pem, domain_key_pem, key_type, ctime, mtime) 
@@ -152,8 +140,7 @@ impl AcmeAccountBmc {
             now,
         )
         .fetch_one(mm.dbx().db())
-        .await
-        .map_err(dbx::Error::from)?;
+        .await?;
 
         let serial_id = sqlx_query.serial_id;
 
@@ -163,10 +150,7 @@ impl AcmeAccountBmc {
         Ok(serial_id)
     }
 
-    pub async fn get_first(
-        _ctx: &Ctx,
-        mm: &ModelManager,
-    ) -> Result<AcmeAccount> {
+    pub async fn get_first(mm: &ModelManager) -> Result<AcmeAccount> {
         let user = sqlx::query_as!(
             AcmeAccount,
             r#"SELECT serial_id, account_id, private_key_pem,
@@ -176,8 +160,7 @@ impl AcmeAccountBmc {
             LIMIT 1;"#,
         )
         .fetch_one(mm.dbx().db())
-        .await
-        .map_err(dbx::Error::from)?;
+        .await?;
 
         Ok(user)
     }

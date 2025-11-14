@@ -1,25 +1,22 @@
 use color_eyre::Result;
-use lib_core::{
-    ctx::Ctx,
-    model::{
-        ModelManager,
-        acme::{account::AcmeAccountBmc, api::AcmeApi},
-    },
-};
+use lib_core::model::ModelManager;
+use reqwest::Client;
+use tracing::debug;
+use url::Url;
 
-#[derive(thiserror::Error, Debug)]
-pub enum Error {}
+use crate::{account::Account, api::AcmeApi};
 
-pub async fn acme_account_setup(
-    ctx: &Ctx,
-    acme_api: &AcmeApi,
-    mm: &ModelManager,
-) -> Result<()> {
-    let maybe_account = AcmeAccountBmc::get_first(ctx, mm).await;
+pub async fn init(
+    acme_uri: Url,
+    client: Client,
+    model_manager: ModelManager,
+) -> Result<Account> {
+    let acme_api =
+        AcmeApi::new_from_client(acme_uri, model_manager, client).await?;
 
-    let account_c = acme_api.create_new_account().await?;
+    let account = acme_api.create_new_account().await?;
 
-    AcmeAccountBmc::create(ctx, mm, account_c).await?;
+    debug!("account_id: {}", account.account_id());
 
-    Ok(())
+    Ok(account)
 }

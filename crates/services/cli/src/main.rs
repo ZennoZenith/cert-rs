@@ -3,11 +3,7 @@ use std::sync::OnceLock;
 
 use clap::{Parser, command};
 use color_eyre::eyre::{Result, eyre};
-use lib_acme::handler::acme_account_setup;
-use lib_core::{
-    ctx::Ctx,
-    model::{ModelManager, acme::api::AcmeApi},
-};
+use lib_core::{ctx::Ctx, model::ModelManager};
 use reqwest::Client;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -105,12 +101,12 @@ async fn main() -> Result<()> {
 
     info!("acme_uri: {acme_uri}");
 
-    let cli_ctx = Ctx::cli_ctx();
+    let _cli_ctx = Ctx::cli_ctx();
 
     let model_manager = ModelManager::new().await?;
-    let acme_api =
-        AcmeApi::new_from_client(acme_uri, reqwest_client().to_owned()).await?;
 
-    acme_account_setup(&cli_ctx, &acme_api, &model_manager).await?;
+    lib_acme::init(acme_uri, reqwest_client().to_owned(), model_manager)
+        .await?;
+
     Ok(())
 }

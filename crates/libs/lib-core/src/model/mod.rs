@@ -20,7 +20,6 @@ mod acs;
 mod error;
 mod store;
 
-pub mod acme;
 pub mod user;
 
 pub use self::error::{Error, Result};
