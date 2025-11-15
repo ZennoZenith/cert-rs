@@ -18,5 +18,7 @@ pub async fn init(
 
     debug!("account_id: {}", account.account_id());
 
+    acme_api.orders().await?;
+
     Ok(account)
 }

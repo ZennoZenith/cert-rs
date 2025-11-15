@@ -139,14 +139,21 @@ pub(crate) enum JwsAlgorithm {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(untagged)]
+pub(crate) enum JwkOrKid<'a> {
+    /// jwk is used before acme account creation
+    Jwk { jwk: Jwk },
+    /// kid is used after acme account creation
+    Kid { kid: &'a Url },
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct JwsProtectedHeaders<'a> {
     #[serde(rename = "alg")]
     pub(crate) algorithm: JwsAlgorithm,
     pub(crate) url: &'a Url,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) jwk: Option<Jwk>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) kid: Option<&'a Url>,
+    #[serde(flatten)]
+    pub(crate) auth: JwkOrKid<'a>,
     pub(crate) nonce: &'a str,
 }
 

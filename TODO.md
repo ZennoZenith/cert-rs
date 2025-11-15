@@ -1,3 +1,13 @@
+- Handle nonce error
+
+```json
+{
+  "type": "urn:ietf:params:acme:error:badNonce",
+  "detail": "JWS has an invalid anti-replay nonce: oZfuwm2RKf2mrr1D7WNMRA",
+  "status": 400
+}
+```
+
 - Option monad, use when reading theme value from local storage
 - update rust examples
 - Form validation

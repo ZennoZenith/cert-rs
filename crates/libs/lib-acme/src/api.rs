@@ -12,13 +12,14 @@ use reqwest::{
     Client, IntoUrl, Response,
     header::{CONTENT_TYPE, HeaderMap, HeaderValue},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use url::Url;
 
 use crate::{
     account::{
-        Account, AccountCert, Jwk, Jws, JwsAlgorithm, JwsProtectedHeaders,
+        Account, AccountCert, Jwk, JwkOrKid, Jws, JwsAlgorithm,
+        JwsProtectedHeaders,
     },
     acme_bmc::AcmeAccountBmc,
     directory::AcmeDirectory,
@@ -78,11 +79,11 @@ impl AcmeClient {
         self.client.head(url).send().await
     }
 
-    async fn _post<B: Serialize>(
+    async fn post<B: Serialize>(
         &self,
         url: &Url,
         account: &Account,
-        body: B,
+        body: Option<B>,
     ) -> Result<Response> {
         // OPTIMIZE: new directly from array without mut
         let mut headers = HeaderMap::new();
@@ -96,15 +97,16 @@ impl AcmeClient {
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,
-            jwk: None,
-            kid: Some(account.account_id()),
+            auth: JwkOrKid::Kid {
+                kid: account.account_id(),
+            },
             nonce: &nonce,
         };
 
         let jws = Jws::new(
             account.cert().private_key.clone(),
             &jws_protected_headers,
-            Some(body),
+            body,
         )?;
 
         let res = self
@@ -134,8 +136,7 @@ impl AcmeClient {
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,
-            jwk: Some(jwk),
-            kid: None,
+            auth: JwkOrKid::Jwk { jwk },
             nonce: &nonce,
         };
 
@@ -162,6 +163,29 @@ impl AcmeClient {
 
         self.enqueue_nonce(res.headers());
 
+        Ok(res)
+    }
+
+    /// Returns orders url
+    pub async fn account_info(&self, account: &Account) -> Result<Url> {
+        #[derive(Debug, Deserialize)]
+        struct Res {
+            orders: Url,
+        }
+
+        let url = account.account_id();
+        let res: Res = self
+            .post(url, account, Option::<u8>::None)
+            .await?
+            .json()
+            .await?; // u8 is just a placeholder
+
+        Ok(res.orders)
+    }
+
+    pub async fn order_status(&self, account: &Account) -> Result<Response> {
+        let url = self.account_info(account).await?;
+        let res = self.post(&url, account, Option::<u8>::None).await?; // u8 is just a placeholder
         Ok(res)
     }
 }
@@ -247,5 +271,23 @@ impl AcmeApi {
         AcmeAccountBmc::create(&self.model_manager, &account).await?;
 
         Ok(account)
+    }
+
+    // pub async fn account_info(&self) -> Result<()> {
+    //     let account: Account = AcmeAccountBmc::get_first(&self.model_manager)
+    //         .await?
+    //         .try_into()?;
+    //     let res = self.client.account_info(&account).await?.text().await?;
+    //     println!("{res}");
+    //     Ok(())
+    // }
+
+    pub async fn orders(&self) -> Result<()> {
+        let account: Account = AcmeAccountBmc::get_first(&self.model_manager)
+            .await?
+            .try_into()?;
+        let res = self.client.order_status(&account).await?.text().await?;
+        println!("{res}");
+        Ok(())
     }
 }
