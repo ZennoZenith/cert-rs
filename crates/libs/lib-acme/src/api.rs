@@ -246,15 +246,15 @@ impl AcmeApi<()> {
         let body = json!({ "termsOfServiceAgreed": true });
 
         /// ```json
-        /// {
-        ///    "status": "valid",
-        ///    "orders": "{order_url}",
-        ///    "key": {
-        ///       "kty": "{key_type: RSA}",
-        ///       "n": "{modulus}",
-        ///       "e": "{exponent}"
-        ///    }
-        /// }
+        ///{
+        ///   "status": "valid",
+        ///   "orders": "https://<host>/list-orderz/26207797f0404df7",
+        ///   "key": {
+        ///      "kty": "RSA",
+        ///      "n": "tai78f5SXggfzd5Yqnqy557nZT37AHLXQNrCOGS9ilpjU3njHuHjgiRfprsZT8w2WvHbFdUa1qG0L0qD01qMm84T7F1grKWhO6y9tBv7yK06yc9ut2H4qzaPl9_AIsa4b3oWkE6BPed26vJKJ3E_4POersx7MVzz1ptwlUYfxUXdvA4T3qgBG7SsS1ShPZSimRzw5dXGqKzLunvWdKinBehbsL52sXdvwjSdCraYyVMLayk02_Flm6fxcgU1S1vYHCFVHinYR5_HkUWRt_3yRd7i-e0vIW9IZxJlE_2jWdGrcQm5oa771cKUnEXjd13glWmteoyAp7j48f90DHCSorBOvK2ns80UTCnQbBTBtzsOK0OmGWeU7dZnpRxXJFbsIxujxbTCS9SFcuUDZzOiJVHVxiBUF8dRworXJ3j4B5V0YWbpw-nN-qjtHsOfthhpSGHjPb9GIFJaLtY2ll_BPEubMX0z6SvznP64niNCvoEkv8NoQx-_cjenP0cWghOmPQGoGhkVerJ6j7nZfXHTNIbmkYcZB67UN9b_M3EgY9JT5j7vug50pVzMwwH5CAsXYTDpsYWJozeqCb2PTu3XTbJcAYGSbHHEA3Dgb7NaEh9A5Erqrj_BUWeO-e7AqkQFcLQ4lYJ2YXdJTLbHnIVkBKI7hcnh5LrVy7XBk4GmTr0",
+        ///      "e": "AQAB"
+        ///   }
+        ///}
         /// ```
         #[allow(dead_code)]
         #[derive(Debug, Deserialize)]
@@ -296,15 +296,15 @@ impl AcmeApi<Account> {
         let auth: JwkOrKid = self.account.account_id().into();
 
         /// ```json
-        /// {
-        ///    "status": "valid",
-        ///    "orders": "{order_url}",
-        ///    "key": {
-        ///       "kty": "{key_type: RSA}",
-        ///       "n": "{modulus}",
-        ///       "e": "{exponent}"
-        ///    }
-        /// }
+        ///{
+        ///   "status": "valid",
+        ///   "orders": "https://<host>/list-orderz/26207797f0404df7",
+        ///   "key": {
+        ///      "kty": "RSA",
+        ///      "n": "tai78f5SXggfzd5Yqnqy557nZT37AHLXQNrCOGS9ilpjU3njHuHjgiRfprsZT8w2WvHbFdUa1qG0L0qD01qMm84T7F1grKWhO6y9tBv7yK06yc9ut2H4qzaPl9_AIsa4b3oWkE6BPed26vJKJ3E_4POersx7MVzz1ptwlUYfxUXdvA4T3qgBG7SsS1ShPZSimRzw5dXGqKzLunvWdKinBehbsL52sXdvwjSdCraYyVMLayk02_Flm6fxcgU1S1vYHCFVHinYR5_HkUWRt_3yRd7i-e0vIW9IZxJlE_2jWdGrcQm5oa771cKUnEXjd13glWmteoyAp7j48f90DHCSorBOvK2ns80UTCnQbBTBtzsOK0OmGWeU7dZnpRxXJFbsIxujxbTCS9SFcuUDZzOiJVHVxiBUF8dRworXJ3j4B5V0YWbpw-nN-qjtHsOfthhpSGHjPb9GIFJaLtY2ll_BPEubMX0z6SvznP64niNCvoEkv8NoQx-_cjenP0cWghOmPQGoGhkVerJ6j7nZfXHTNIbmkYcZB67UN9b_M3EgY9JT5j7vug50pVzMwwH5CAsXYTDpsYWJozeqCb2PTu3XTbJcAYGSbHHEA3Dgb7NaEh9A5Erqrj_BUWeO-e7AqkQFcLQ4lYJ2YXdJTLbHnIVkBKI7hcnh5LrVy7XBk4GmTr0",
+        ///      "e": "AQAB"
+        ///   }
+        ///}
         /// ```
         #[derive(Debug, Deserialize)]
         struct Res {
@@ -336,9 +336,11 @@ impl AcmeApi<Account> {
         let auth: JwkOrKid = self.account.account_id().into();
 
         /// ```json
-        /// {
-        ///    "orders": ["{order_url}"]
-        /// }
+        ///{
+        ///   "orders": [
+        ///      "https://<host>/my-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio"
+        ///   ]
+        ///}
         /// ```
         #[allow(dead_code)]
         #[derive(Debug, Deserialize)]
@@ -359,5 +361,162 @@ impl AcmeApi<Account> {
         Ok(())
     }
 
-    // pub async fn create_order(&self) {}
+    pub(crate) async fn create_order(&self) -> Result<Url> {
+        let url = &self.acme_directory.new_order;
+
+        let auth: JwkOrKid = self.account.account_id().into();
+
+        #[allow(dead_code)]
+        #[derive(Debug, Deserialize)]
+        struct Identifier {
+            r#type: String,
+            value: String,
+        }
+
+        /// headers:
+        ///
+        /// ```json
+        ///{
+        ///    "location": "https://0.0.0.0:24000/my-order/FGCGiiJ2yHuTSkNtg7kYJBETqIYlKbtXeqg9KXmIJEg",
+        ///}
+        /// ````
+        /// Body
+        ///
+        /// ```jsonc
+        ///{
+        ///   "status": "pending",
+        ///   "expires": "2025-11-16T18:33:30Z",
+        ///   "identifiers": [
+        ///      {
+        ///         "type": "dns",
+        ///         "value": "example.com"
+        ///      },
+        ///      {
+        ///         "type": "dns",
+        ///         "value": "*.example.com"
+        ///      }
+        ///   ],
+        ///   "profile": "default", // "shortlived" ...,
+        ///   "finalize": "https://<host>/finalize-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio",
+        ///   "authorizations": [
+        ///      "https://<host>/authZ/hXIxKCZwI8BhmGQhn16d98YMqHw5ldMOnnaGm5O_a34",
+        ///      "https://<host>/authZ/q1HUYPqI2BFX-DuZhy2UNvNRMGnXxFz65xmXmY_Xy4o"
+        ///   ]
+        ///}
+        /// ```
+        #[allow(dead_code)]
+        #[derive(Debug, Deserialize)]
+        struct Res {
+            status: String,
+            expires: String,
+            identifiers: Vec<Identifier>,
+            profile: String,
+            finalize: String,
+            authorizations: Vec<Url>,
+        }
+
+        let (headers, _): (_, Res) = self
+            .client
+            .post(
+                url,
+                self.account.private_key().clone(),
+                auth,
+                AcmeApiBody::Other(json!({
+                    "identifiers": [{
+                        "type": "dns",
+                        "value": "example.com"
+                    }, {
+                        "type": "dns",
+                        "value": "*.example.com"
+                    }, {
+                        "type": "dns",
+                        "value": "*.test.com"
+                    }, {
+                        "type": "dns",
+                        "value": "test.com"
+                    }]
+                })),
+            )
+            .await?;
+
+        let order_url: Url = headers
+            .get("location")
+            .map(|v| {
+                String::from(
+                    v.to_str().wrap_err("location header not utf-8 string")?,
+                )
+                .parse()
+                .wrap_err("location header account_id not a url")
+            })
+            .ok_or_eyre("cannot extract location header")??;
+
+        Ok(order_url)
+    }
+
+    pub(crate) async fn order_status(&self, order_url: &Url) -> Result<()> {
+        let url = order_url;
+
+        let auth: JwkOrKid = self.account.account_id().into();
+
+        #[allow(dead_code)]
+        #[derive(Debug, Deserialize)]
+        struct Identifier {
+            r#type: String,
+            value: String,
+        }
+
+        /// headers:
+        ///
+        /// ```json
+        ///{
+        ///    "location": "https://0.0.0.0:24000/my-order/FGCGiiJ2yHuTSkNtg7kYJBETqIYlKbtXeqg9KXmIJEg",
+        ///}
+        /// ````
+        /// Body
+        ///
+        /// ```jsonc
+        ///{
+        ///   "status": "pending",
+        ///   "expires": "2025-11-16T18:33:30Z",
+        ///   "identifiers": [
+        ///      {
+        ///         "type": "dns",
+        ///         "value": "example.com"
+        ///      },
+        ///      {
+        ///         "type": "dns",
+        ///         "value": "*.example.com"
+        ///      }
+        ///   ],
+        ///   "profile": "default", // "shortlived" ...,
+        ///   "finalize": "https://<host>/finalize-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio",
+        ///   "authorizations": [
+        ///      "https://<host>/authZ/hXIxKCZwI8BhmGQhn16d98YMqHw5ldMOnnaGm5O_a34",
+        ///      "https://<host>/authZ/q1HUYPqI2BFX-DuZhy2UNvNRMGnXxFz65xmXmY_Xy4o"
+        ///   ]
+        ///}
+        /// ```
+        #[allow(dead_code)]
+        #[derive(Debug, Deserialize)]
+        struct Res {
+            status: String,
+            expires: String,
+            identifiers: Vec<Identifier>,
+            profile: String,
+            finalize: String,
+            authorizations: Vec<Url>,
+        }
+
+        let _: (_, serde_json::Value) = self
+            .client
+            .post(
+                url,
+                self.account.private_key().clone(),
+                auth,
+                AcmeApiBody::EMPTY_STRING,
+            )
+            .await?;
+
+        Ok(())
+    }
 }

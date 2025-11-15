@@ -27,5 +27,9 @@ pub async fn init(
 
     acme_api.orders().await?;
 
+    let order_url = acme_api.create_order().await?;
+
+    acme_api.order_status(&order_url).await?;
+
     Ok(())
 }
