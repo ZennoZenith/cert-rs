@@ -16,23 +16,10 @@ use url::Url;
 
 use crate::{
     account::{
-        Account, AccountCert, Jwk, JwkOrKid, Jws, JwsAlgorithm,
-        JwsProtectedHeaders,
+        Account, AccountCert, JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders,
     },
-    acme_bmc::AcmeAccountBmc,
     directory::AcmeDirectory,
 };
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct AccountInfoResponse {
-    status: String,
-    orders: Url,
-    // "key": {
-    //    "kty": "{key_type: RSA}",
-    //    "n": "{modulus}",
-    //    "e": "{exponent}"
-    // }
-}
 
 struct AcmeClient {
     client: Client,
@@ -87,11 +74,11 @@ impl AcmeClient {
         self.client.head(url).send().await
     }
 
-    pub async fn post<'a, B: Serialize>(
+    pub async fn post<B: Serialize>(
         &self,
         url: &Url,
         private_key: Rsa<Private>,
-        auth: JwkOrKid<'a>,
+        auth: JwkOrKid,
         body: Option<B>,
     ) -> Result<Response> {
         // OPTIMIZE: new directly from array without mut
@@ -101,13 +88,13 @@ impl AcmeClient {
             HeaderValue::from_static("application/jose+json"),
         );
 
-        let nonce = self.get_nonce().await?;
+        let nonce = &self.get_nonce().await?;
 
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,
             auth,
-            nonce: &nonce,
+            nonce,
         };
 
         let jws = Jws::new(private_key, &jws_protected_headers, body)?;
@@ -124,77 +111,6 @@ impl AcmeClient {
 
         Ok(res)
     }
-
-    // pub async fn new_account(
-    //     &self,
-    //     account_cert: &AccountCert,
-    // ) -> Result<Response> {
-    //     let url = &self.acme_directory.new_account;
-    //     let body = json!({ "termsOfServiceAgreed": true });
-
-    //     let jwk = Jwk::from(account_cert);
-
-    //     let nonce = self.get_nonce().await?;
-
-    //     let jws_protected_headers = JwsProtectedHeaders {
-    //         algorithm: JwsAlgorithm::RS256,
-    //         url,
-    //         auth: JwkOrKid::Jwk { jwk },
-    //         nonce: &nonce,
-    //     };
-
-    //     let jws = Jws::new(
-    //         account_cert.private_key.clone(),
-    //         &jws_protected_headers,
-    //         Some(body),
-    //     )?;
-
-    //     // OPTIMIZE: new directly from array without mut
-    //     let mut headers = HeaderMap::new();
-    //     headers.insert(
-    //         CONTENT_TYPE,
-    //         HeaderValue::from_static("application/jose+json"),
-    //     );
-
-    //     let res = self
-    //         .client
-    //         .post(url.as_str())
-    //         .headers(headers)
-    //         .json(&jws)
-    //         .send()
-    //         .await?;
-
-    //     self.enqueue_nonce(res.headers());
-
-    //     Ok(res)
-    // }
-
-    // /// Returns orders url
-    // async fn account_info(
-    //     &self,
-    //     account: &Account,
-    // ) -> Result<AccountInfoResponse> {
-    //     let url = account.account_id();
-    //     let res: AccountInfoResponse = self
-    //         .post(url, account, Option::<u8>::None)
-    //         .await?
-    //         .json()
-    //         .await?; // u8 is just a placeholder
-
-    //     Ok(res)
-    // }
-
-    // pub(crate) async fn order_status(
-    //     &self,
-    //     account: &Account,
-    //     account_info: &AccountInfoResponse,
-    // ) -> Result<Response> {
-    //     let url = &account_info.orders;
-    //     let res = self.post(&url, account, Option::<u8>::None).await?; // u8 is just a placeholder
-    //     Ok(res)
-    // }
-
-    // pub async fn create_order() {}
 }
 
 pub struct AcmeApi<Account = ()> {
@@ -253,27 +169,15 @@ impl AcmeApi<()> {
     }
 
     pub async fn register_account(self) -> Result<AcmeApi<Account>> {
-        // if let Ok(account) =
-        //     AcmeAccountBmc::get_first(&self.model_manager).await
-        // {
-        //     let account: Account = account.try_into()?;
-        //     return Ok(self.into_registerd(account));
-        // }
-
         let new_account_cert = AccountCert::new()?;
 
         let url = &self.acme_directory.new_account;
-        let jwk = Jwk::from(&new_account_cert);
+        let jwk: JwkOrKid = new_account_cert.public_key.clone().into();
         let body = json!({ "termsOfServiceAgreed": true });
 
         let res = self
             .client
-            .post(
-                url,
-                new_account_cert.private_key.clone(),
-                JwkOrKid::Jwk { jwk },
-                Some(&body),
-            )
+            .post(url, new_account_cert.private_key.clone(), jwk, Some(&body))
             .await?;
 
         let account_id: Url = res
@@ -298,25 +202,38 @@ impl AcmeApi<()> {
 
         let account = Account::new(account_id, new_account_cert.clone());
 
-        // Save acount to database
-        AcmeAccountBmc::create(&self.model_manager, &account).await?;
-
         Ok(self.into_registerd(account))
     }
 }
 
 impl AcmeApi<Account> {
-    pub async fn account_info(&self) -> Result<AccountInfoResponse> {
+    async fn orders_url(&self) -> Result<Url> {
         let url = &self.account.account_id();
+        let auth: JwkOrKid = self.account.account_id().into();
 
-        let res: AccountInfoResponse = self
+        /// ```json
+        /// {
+        ///    "status": "valid",
+        ///    "orders": "{order_url}",
+        ///    "key": {
+        ///       "kty": "{key_type: RSA}",
+        ///       "n": "{modulus}",
+        ///       "e": "{exponent}"
+        ///    }
+        /// }
+        /// ```
+        #[derive(Debug, Deserialize)]
+        struct Res {
+            status: String,
+            orders: Url,
+        }
+
+        let res: Res = self
             .client
             .post(
                 url,
                 self.account.private_key().clone(),
-                JwkOrKid::Kid {
-                    kid: self.account.account_id(),
-                },
+                auth,
                 Option::<u8>::None,
             )
             .await?
@@ -328,8 +245,29 @@ impl AcmeApi<Account> {
                 "account info status not valid"
             ));
         }
-        tracing::debug!("{res:?}");
-        Ok(res)
+        Ok(res.orders)
+    }
+
+    pub(crate) async fn orders(&self) -> Result<()> {
+        let url = &self.orders_url().await?;
+
+        let auth: JwkOrKid = self.account.account_id().into();
+
+        let res = self
+            .client
+            .post(
+                url,
+                self.account.private_key().clone(),
+                auth,
+                Option::<u8>::None,
+            )
+            .await?
+            .text()
+            .await?; // u8 is just a placeholder
+
+        println!("{res}");
+
+        Ok(())
     }
 
     // pub async fn orders(&self, order_url: &Url) -> Result<()> {

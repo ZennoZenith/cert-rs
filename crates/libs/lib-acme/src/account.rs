@@ -13,8 +13,6 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use url::Url;
 
-use crate::acme_bmc::AcmeAccount;
-
 #[derive(
     Debug,
     Clone,
@@ -45,7 +43,6 @@ pub struct AccountCert {
     pub(crate) private_key: Rsa<Private>,
     pub(crate) public_key: Rsa<Public>,
     pub(crate) _domain_key: Rsa<Private>,
-    pub(crate) key_type: KeyType,
 }
 
 impl AccountCert {
@@ -60,7 +57,6 @@ impl AccountCert {
             private_key,
             public_key,
             _domain_key: domain_key,
-            key_type: KeyType::Rsa,
         })
     }
 
@@ -77,55 +73,7 @@ impl AccountCert {
             private_key,
             public_key,
             _domain_key: domain_key,
-            key_type: KeyType::Rsa,
         })
-    }
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct Jwk {
-    /// Public key exponent base64 url encoded no pad
-    #[serde(rename = "e")]
-    exponent: Arc<str>,
-    /// Key type
-    #[serde(rename = "kty")]
-    key_type: KeyType,
-    /// Public key modulus base64 url encoded no pad
-    #[serde(rename = "n")]
-    modulus: Arc<str>,
-
-    #[serde(skip)]
-    /// self -> to json -> to hex -> base64url
-    _jwk_thumbprint: Arc<str>,
-}
-
-impl From<&AccountCert> for Jwk {
-    fn from(value: &AccountCert) -> Self {
-        let modulus =
-            Arc::from(b64::b64u_encode(value.public_key.n().to_vec()));
-        let exponent =
-            Arc::from(b64::b64u_encode(value.public_key.e().to_vec()));
-        let key_type = value.key_type.clone();
-
-        let jwk = format!(
-            r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#
-        );
-
-        let hash = Sha256::digest(jwk).to_vec();
-        let jwk_thumbprint = Arc::from(b64::b64u_encode(hash));
-
-        Self {
-            exponent,
-            key_type,
-            modulus,
-            _jwk_thumbprint: jwk_thumbprint,
-        }
-    }
-}
-
-impl From<AccountCert> for Jwk {
-    fn from(value: AccountCert) -> Self {
-        Jwk::from(&value)
     }
 }
 
@@ -134,13 +82,61 @@ pub(crate) enum JwsAlgorithm {
     RS256,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(untagged)]
-pub(crate) enum JwkOrKid<'a> {
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum JwkOrKid {
     /// jwk is used before acme account creation
-    Jwk { jwk: Jwk },
+    Jwk {
+        /// Public key exponent base64 url encoded no pad
+        #[serde(rename = "e")]
+        exponent: Arc<str>,
+        /// Key type
+        #[serde(rename = "kty")]
+        key_type: KeyType,
+        /// Public key modulus base64 url encoded no pad
+        #[serde(rename = "n")]
+        modulus: Arc<str>,
+
+        #[serde(skip)]
+        /// self -> to json -> to hex -> base64url
+        _jwk_thumbprint: Arc<str>,
+    },
     /// kid is used after acme account creation
-    Kid { kid: &'a Url },
+    Kid(Url),
+}
+
+impl From<Url> for JwkOrKid {
+    fn from(kid: Url) -> Self {
+        Self::Kid(kid)
+    }
+}
+
+impl From<&Url> for JwkOrKid {
+    fn from(kid: &Url) -> Self {
+        Self::Kid(kid.clone())
+    }
+}
+
+impl From<Rsa<Public>> for JwkOrKid {
+    fn from(value: Rsa<Public>) -> Self {
+        let modulus = Arc::from(b64::b64u_encode(value.n().to_vec()));
+        let exponent = Arc::from(b64::b64u_encode(value.e().to_vec()));
+        let key_type = KeyType::Rsa;
+
+        let jwk = format!(
+            r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#
+        );
+
+        let hash = Sha256::digest(jwk).to_vec();
+        let jwk_thumbprint = Arc::from(b64::b64u_encode(hash));
+
+        Self::Jwk {
+            exponent,
+            key_type,
+            modulus,
+            _jwk_thumbprint: jwk_thumbprint,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -149,7 +145,7 @@ pub(crate) struct JwsProtectedHeaders<'a> {
     pub(crate) algorithm: JwsAlgorithm,
     pub(crate) url: &'a Url,
     #[serde(flatten)]
-    pub(crate) auth: JwkOrKid<'a>,
+    pub(crate) auth: JwkOrKid,
     pub(crate) nonce: &'a str,
 }
 
@@ -203,18 +199,11 @@ impl Jws {
 pub struct Account {
     account_id: Url,
     cert: AccountCert,
-    jwk: Jwk,
 }
 
 impl Account {
     pub fn new(account_id: Url, cert: AccountCert) -> Account {
-        let jwk = (&cert).into();
-
-        Self {
-            account_id,
-            cert,
-            jwk,
-        }
+        Self { account_id, cert }
     }
 
     pub fn account_id(&self) -> &Url {
@@ -228,12 +217,11 @@ impl Account {
     pub fn cert(&self) -> &AccountCert {
         &self.cert
     }
-
-    pub fn jwk(&self) -> &Jwk {
-        &self.jwk
-    }
 }
 
+#[cfg(feature = "db")]
+use crate::acme_bmc::AcmeAccount;
+#[cfg(feature = "db")]
 impl TryFrom<AcmeAccount> for Account {
     type Error = color_eyre::eyre::Error;
 
@@ -243,7 +231,7 @@ impl TryFrom<AcmeAccount> for Account {
             private_key_pem,
             public_key_pem,
             domain_key_pem,
-            key_type,
+            key_type: _key_type,
             ..
         } = value;
 
@@ -252,15 +240,9 @@ impl TryFrom<AcmeAccount> for Account {
             private_key: Rsa::private_key_from_pem(&private_key_pem)?,
             public_key: Rsa::public_key_from_pem(&public_key_pem)?,
             _domain_key: Rsa::private_key_from_pem(&domain_key_pem)?,
-            key_type,
         };
-        let jwk = (&cert).into();
 
-        Ok(Self {
-            account_id,
-            cert,
-            jwk,
-        })
+        Ok(Self { account_id, cert })
     }
 }
 
@@ -386,9 +368,13 @@ QeCo5tUQkRV4d39agLjXHHcCAwEAAQ==
         // println!("modulus: {modulus}");
         assert_eq!(FIXTURE_MODULUS_HEX, modulus);
 
-        let jwk = Jwk::from(account_cert);
-        println!("modulus: {}", jwk.modulus);
-        assert_eq!(FIXTURE_MODULUS_BASE64_URL_NOPAD, jwk.modulus.deref());
+        let JwkOrKid::Jwk { modulus, .. } =
+            account_cert.public_key.clone().into()
+        else {
+            panic!("JwkOrKid not of type Jwk")
+        };
+        println!("modulus: {}", modulus);
+        assert_eq!(FIXTURE_MODULUS_BASE64_URL_NOPAD, modulus.deref());
 
         Ok(())
     }
@@ -407,9 +393,13 @@ QeCo5tUQkRV4d39agLjXHHcCAwEAAQ==
 
         const FIXTURE_EXPONENT_BASE64_URL_NOPAD: &str = "AQAB";
 
-        let jwk = Jwk::from(account_cert);
-        println!("exponent_base64: {}", jwk.exponent);
-        assert_eq!(FIXTURE_EXPONENT_BASE64_URL_NOPAD, jwk.exponent.deref());
+        let JwkOrKid::Jwk { exponent, .. } =
+            account_cert.public_key.clone().into()
+        else {
+            panic!("JwkOrKid not of type Jwk")
+        };
+        println!("exponent_base64: {}", exponent);
+        assert_eq!(FIXTURE_EXPONENT_BASE64_URL_NOPAD, exponent.deref());
 
         Ok(())
     }

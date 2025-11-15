@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::{ops::Deref, str::FromStr};
 
 use lib_core::model::ModelManager;
@@ -125,7 +127,7 @@ impl AcmeAccountBmc {
 
         let now = TimeRfc3339::now_utc().format_time();
 
-        let key_type: &'static str = account_cert.key_type.clone().into();
+        let key_type: &'static str = KeyType::Rsa.into();
 
         let sqlx_query = sqlx::query!(
             "INSERT INTO acme_account (account_id, private_key_pem, public_key_pem, domain_key_pem, key_type, ctime, mtime) 
@@ -150,7 +152,7 @@ impl AcmeAccountBmc {
         Ok(serial_id)
     }
 
-    pub async fn get_first(mm: &ModelManager) -> Result<AcmeAccount> {
+    pub async fn _get_first(mm: &ModelManager) -> Result<AcmeAccount> {
         let user = sqlx::query_as!(
             AcmeAccount,
             r#"SELECT serial_id, account_id, private_key_pem,
