@@ -160,7 +160,7 @@ impl Jws {
     pub fn new<T: Serialize>(
         private_key: Rsa<Private>,
         jws_protected_headers: &JwsProtectedHeaders,
-        body: Option<T>,
+        body: AcmeApiBody<T>,
     ) -> Result<Self> {
         let protected = b64::b64u_encode(
             serde_json::to_string(&jws_protected_headers)
@@ -168,15 +168,15 @@ impl Jws {
         );
 
         // If body is present serialize to string else set empty string
-        let payload = body
-            .map(|v| {
-                b64::b64u_encode(
-                    serde_json::to_string(&v)
-                        .expect("Unable to serialize body"),
-                )
-            })
-            .unwrap_or_default();
+        let serialized_body = match body {
+            AcmeApiBody::EmptyString => String::from(""),
+            AcmeApiBody::EmptyObject => String::from("{}"),
+            AcmeApiBody::Other(b) => {
+                serde_json::to_string(&b).expect("Unable to serialize body")
+            }
+        };
 
+        let payload = b64::b64u_encode(serialized_body);
         let signature = format!("{protected}.{payload}");
 
         let keypair = PKey::from_rsa(private_key)?;
@@ -221,6 +221,7 @@ impl Account {
 
 #[cfg(feature = "db")]
 use crate::acme_bmc::AcmeAccount;
+use crate::api::AcmeApiBody;
 #[cfg(feature = "db")]
 impl TryFrom<AcmeAccount> for Account {
     type Error = color_eyre::eyre::Error;

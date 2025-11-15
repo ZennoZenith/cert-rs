@@ -10,7 +10,7 @@ use reqwest::{
     Client, IntoUrl, Response,
     header::{CONTENT_TYPE, HeaderMap, HeaderValue},
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::json;
 use url::Url;
 
@@ -25,6 +25,60 @@ struct AcmeClient {
     client: Client,
     nonce_url: Url,
     nonce_store: Mutex<VecDeque<Box<str>>>,
+}
+
+#[cfg(debug_assertions)]
+fn headermap_to_hashmap(
+    headers: &HeaderMap,
+) -> std::collections::HashMap<String, String> {
+    headers
+        .iter()
+        .filter_map(|(key, value)| {
+            // Convert HeaderValue to &str (may fail if not valid UTF-8)
+            value
+                .to_str()
+                .ok()
+                .map(|v| (key.to_string(), v.to_string()))
+        })
+        .collect()
+}
+
+#[cfg(debug_assertions)]
+#[allow(dead_code)]
+fn hashmap_to_headermap(
+    map: std::collections::HashMap<String, String>,
+) -> HeaderMap {
+    let mut headers = HeaderMap::new();
+
+    for (key, value) in map {
+        let name = match reqwest::header::HeaderName::from_bytes(key.as_bytes())
+        {
+            Ok(n) => n,
+            Err(_) => continue, // skip invalid header names
+        };
+
+        let val = match HeaderValue::from_str(&value) {
+            Ok(v) => v,
+            Err(_) => continue, // skip invalid values
+        };
+
+        headers.insert(name, val);
+    }
+
+    headers
+}
+
+pub(crate) enum AcmeApiBody<T: Serialize = ()> {
+    EmptyString,
+    #[allow(dead_code)]
+    EmptyObject,
+    Other(T),
+}
+
+impl AcmeApiBody<()> {
+    pub const EMPTY_STRING: Self = AcmeApiBody::EmptyString;
+    #[allow(dead_code)]
+    pub const EMPTY_OBJECT: Self = AcmeApiBody::EmptyObject;
 }
 
 impl AcmeClient {
@@ -74,13 +128,17 @@ impl AcmeClient {
         self.client.head(url).send().await
     }
 
-    pub async fn post<B: Serialize>(
+    pub async fn post<B, R>(
         &self,
         url: &Url,
         private_key: Rsa<Private>,
         auth: JwkOrKid,
-        body: Option<B>,
-    ) -> Result<Response> {
+        body: AcmeApiBody<B>,
+    ) -> Result<(HeaderMap, R)>
+    where
+        B: Serialize,
+        R: DeserializeOwned + std::fmt::Debug,
+    {
         // OPTIMIZE: new directly from array without mut
         let mut headers = HeaderMap::new();
         headers.insert(
@@ -107,9 +165,21 @@ impl AcmeClient {
             .send()
             .await?;
 
-        self.enqueue_nonce(res.headers());
+        let headers = res.headers().clone();
+        self.enqueue_nonce(&headers);
 
-        Ok(res)
+        let body_text = res.text().await?;
+
+        #[cfg(debug_assertions)]
+        tracing::debug!(
+            "\nheaders: {}\nbody: {}",
+            serde_json::to_string_pretty(&headermap_to_hashmap(&headers))?,
+            body_text,
+        );
+
+        let body: R = serde_json::from_str(&body_text)?;
+
+        Ok((headers, body))
     }
 }
 
@@ -175,13 +245,35 @@ impl AcmeApi<()> {
         let jwk: JwkOrKid = new_account_cert.public_key.clone().into();
         let body = json!({ "termsOfServiceAgreed": true });
 
-        let res = self
+        /// ```json
+        /// {
+        ///    "status": "valid",
+        ///    "orders": "{order_url}",
+        ///    "key": {
+        ///       "kty": "{key_type: RSA}",
+        ///       "n": "{modulus}",
+        ///       "e": "{exponent}"
+        ///    }
+        /// }
+        /// ```
+        #[allow(dead_code)]
+        #[derive(Debug, Deserialize)]
+        struct Res {
+            status: String,
+            orders: Url,
+        }
+
+        let (headers, _): (_, Res) = self
             .client
-            .post(url, new_account_cert.private_key.clone(), jwk, Some(&body))
+            .post(
+                url,
+                new_account_cert.private_key.clone(),
+                jwk,
+                AcmeApiBody::Other(&body),
+            )
             .await?;
 
-        let account_id: Url = res
-            .headers()
+        let account_id: Url = headers
             .get("location")
             .map(|v| {
                 String::from(
@@ -191,14 +283,6 @@ impl AcmeApi<()> {
                 .wrap_err("location header account_id not a url")
             })
             .ok_or_eyre("cannot extract location header")??;
-
-        #[cfg(debug_assertions)]
-        {
-            use tracing::debug;
-
-            let text = res.text().await.unwrap();
-            debug!("{text}");
-        }
 
         let account = Account::new(account_id, new_account_cert.clone());
 
@@ -228,17 +312,15 @@ impl AcmeApi<Account> {
             orders: Url,
         }
 
-        let res: Res = self
+        let (_, res): (_, Res) = self
             .client
             .post(
                 url,
                 self.account.private_key().clone(),
                 auth,
-                Option::<u8>::None,
+                AcmeApiBody::EMPTY_STRING,
             )
-            .await?
-            .json()
-            .await?; // u8 is just a placeholder
+            .await?;
 
         if res.status != "valid" {
             return Err(color_eyre::eyre::eyre!(
@@ -253,28 +335,29 @@ impl AcmeApi<Account> {
 
         let auth: JwkOrKid = self.account.account_id().into();
 
-        let res = self
+        /// ```json
+        /// {
+        ///    "orders": ["{order_url}"]
+        /// }
+        /// ```
+        #[allow(dead_code)]
+        #[derive(Debug, Deserialize)]
+        struct Res {
+            orders: Vec<serde_json::Value>,
+        }
+
+        let _: (_, Res) = self
             .client
             .post(
                 url,
                 self.account.private_key().clone(),
                 auth,
-                Option::<u8>::None,
+                AcmeApiBody::EMPTY_STRING,
             )
-            .await?
-            .text()
-            .await?; // u8 is just a placeholder
-
-        println!("{res}");
+            .await?;
 
         Ok(())
     }
-
-    // pub async fn orders(&self, order_url: &Url) -> Result<()> {
-    //     let res = self.client.order_status(url).await?.text().await?;
-    //     println!("{res}");
-    //     Ok(())
-    // }
 
     // pub async fn create_order(&self) {}
 }
