@@ -1,3 +1,4 @@
+- Make using sqlite optional in lib_acme
 - Handle nonce error
 
 ```json

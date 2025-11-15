@@ -10,7 +10,6 @@ use openssl::{
     sign::Signer,
 };
 use serde::Serialize;
-use serde_json::json;
 use sha2::{Digest, Sha256};
 use url::Url;
 
@@ -108,12 +107,9 @@ impl From<&AccountCert> for Jwk {
             Arc::from(b64::b64u_encode(value.public_key.e().to_vec()));
         let key_type = value.key_type.clone();
 
-        let jwk = serde_json::to_string(&json!({
-           "e": exponent,
-           "kty": key_type,
-           "n": modulus,
-        }))
-        .expect("Failed to serialize jwk");
+        let jwk = format!(
+            r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#
+        );
 
         let hash = Sha256::digest(jwk).to_vec();
         let jwk_thumbprint = Arc::from(b64::b64u_encode(hash));
@@ -223,6 +219,10 @@ impl Account {
 
     pub fn account_id(&self) -> &Url {
         &self.account_id
+    }
+
+    pub fn private_key(&self) -> &Rsa<Private> {
+        &self.cert.private_key
     }
 
     pub fn cert(&self) -> &AccountCert {

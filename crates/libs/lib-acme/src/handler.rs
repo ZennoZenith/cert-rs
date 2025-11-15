@@ -10,15 +10,16 @@ pub async fn init(
     acme_uri: Url,
     client: Client,
     model_manager: ModelManager,
-) -> Result<Account> {
+) -> Result<()> {
     let acme_api =
         AcmeApi::new_from_client(acme_uri, model_manager, client).await?;
 
-    let account = acme_api.create_new_account().await?;
+    let acme_api = acme_api.register_account().await?;
+    // debug!("account_id: {}", account.account_id());
 
-    debug!("account_id: {}", account.account_id());
+    let _account_info = acme_api.account_info().await?;
 
-    acme_api.orders().await?;
+    // acme_api.create_order();
 
-    Ok(account)
+    Ok(())
 }
