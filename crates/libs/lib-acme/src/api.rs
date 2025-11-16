@@ -18,7 +18,9 @@ use crate::{
     account::{
         Account, AccountCert, JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders,
     },
+    challange::AuthZ,
     directory::AcmeDirectory,
+    order::{Order, OrderStatus},
 };
 
 struct AcmeClient {
@@ -66,6 +68,19 @@ fn hashmap_to_headermap(
     }
 
     headers
+}
+
+fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
+    headers
+        .get("location")
+        .map(|v| {
+            String::from(
+                v.to_str().wrap_err("location header not utf-8 string")?,
+            )
+            .parse()
+            .wrap_err("location header account_id not a url")
+        })
+        .ok_or_eyre("cannot extract location header")?
 }
 
 pub(crate) enum AcmeApiBody<T: Serialize = ()> {
@@ -172,10 +187,19 @@ impl AcmeClient {
 
         #[cfg(debug_assertions)]
         tracing::debug!(
-            "\nheaders: {}\nbody: {}",
+            "\nurl: {}\nheaders: {}\nbody: {}",
+            url,
             serde_json::to_string_pretty(&headermap_to_hashmap(&headers))?,
             body_text,
         );
+
+        // error body
+        //
+        // {
+        //    "type": "urn:ietf:params:acme:error:badNonce",
+        //    "detail": "JWS has an invalid anti-replay nonce: ...",
+        //    "status": 400
+        // }
 
         let body: R = serde_json::from_str(&body_text)?;
 
@@ -273,16 +297,7 @@ impl AcmeApi<()> {
             )
             .await?;
 
-        let account_id: Url = headers
-            .get("location")
-            .map(|v| {
-                String::from(
-                    v.to_str().wrap_err("location header not utf-8 string")?,
-                )
-                .parse()
-                .wrap_err("location header account_id not a url")
-            })
-            .ok_or_eyre("cannot extract location header")??;
+        let account_id: Url = extract_location_header(&headers)?;
 
         let account = Account::new(account_id, new_account_cert.clone());
 
@@ -361,61 +376,12 @@ impl AcmeApi<Account> {
         Ok(())
     }
 
-    pub(crate) async fn create_order(&self) -> Result<Url> {
+    pub(crate) async fn create_order(&self) -> Result<(Url, OrderStatus)> {
         let url = &self.acme_directory.new_order;
 
         let auth: JwkOrKid = self.account.account_id().into();
 
-        #[allow(dead_code)]
-        #[derive(Debug, Deserialize)]
-        struct Identifier {
-            r#type: String,
-            value: String,
-        }
-
-        /// headers:
-        ///
-        /// ```json
-        ///{
-        ///    "location": "https://0.0.0.0:24000/my-order/FGCGiiJ2yHuTSkNtg7kYJBETqIYlKbtXeqg9KXmIJEg",
-        ///}
-        /// ````
-        /// Body
-        ///
-        /// ```jsonc
-        ///{
-        ///   "status": "pending",
-        ///   "expires": "2025-11-16T18:33:30Z",
-        ///   "identifiers": [
-        ///      {
-        ///         "type": "dns",
-        ///         "value": "example.com"
-        ///      },
-        ///      {
-        ///         "type": "dns",
-        ///         "value": "*.example.com"
-        ///      }
-        ///   ],
-        ///   "profile": "default", // "shortlived" ...,
-        ///   "finalize": "https://<host>/finalize-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio",
-        ///   "authorizations": [
-        ///      "https://<host>/authZ/hXIxKCZwI8BhmGQhn16d98YMqHw5ldMOnnaGm5O_a34",
-        ///      "https://<host>/authZ/q1HUYPqI2BFX-DuZhy2UNvNRMGnXxFz65xmXmY_Xy4o"
-        ///   ]
-        ///}
-        /// ```
-        #[allow(dead_code)]
-        #[derive(Debug, Deserialize)]
-        struct Res {
-            status: String,
-            expires: String,
-            identifiers: Vec<Identifier>,
-            profile: String,
-            finalize: String,
-            authorizations: Vec<Url>,
-        }
-
-        let (headers, _): (_, Res) = self
+        let (headers, order_status): (_, OrderStatus) = self
             .client
             .post(
                 url,
@@ -439,75 +405,20 @@ impl AcmeApi<Account> {
             )
             .await?;
 
-        let order_url: Url = headers
-            .get("location")
-            .map(|v| {
-                String::from(
-                    v.to_str().wrap_err("location header not utf-8 string")?,
-                )
-                .parse()
-                .wrap_err("location header account_id not a url")
-            })
-            .ok_or_eyre("cannot extract location header")??;
+        let order_url: Url = extract_location_header(&headers)?;
 
-        Ok(order_url)
+        Ok((order_url, order_status))
     }
 
-    pub(crate) async fn order_status(&self, order_url: &Url) -> Result<()> {
+    pub(crate) async fn order_status(
+        &self,
+        order_url: &Url,
+    ) -> Result<OrderStatus> {
         let url = order_url;
 
         let auth: JwkOrKid = self.account.account_id().into();
 
-        #[allow(dead_code)]
-        #[derive(Debug, Deserialize)]
-        struct Identifier {
-            r#type: String,
-            value: String,
-        }
-
-        /// headers:
-        ///
-        /// ```json
-        ///{
-        ///    "location": "https://0.0.0.0:24000/my-order/FGCGiiJ2yHuTSkNtg7kYJBETqIYlKbtXeqg9KXmIJEg",
-        ///}
-        /// ````
-        /// Body
-        ///
-        /// ```jsonc
-        ///{
-        ///   "status": "pending",
-        ///   "expires": "2025-11-16T18:33:30Z",
-        ///   "identifiers": [
-        ///      {
-        ///         "type": "dns",
-        ///         "value": "example.com"
-        ///      },
-        ///      {
-        ///         "type": "dns",
-        ///         "value": "*.example.com"
-        ///      }
-        ///   ],
-        ///   "profile": "default", // "shortlived" ...,
-        ///   "finalize": "https://<host>/finalize-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio",
-        ///   "authorizations": [
-        ///      "https://<host>/authZ/hXIxKCZwI8BhmGQhn16d98YMqHw5ldMOnnaGm5O_a34",
-        ///      "https://<host>/authZ/q1HUYPqI2BFX-DuZhy2UNvNRMGnXxFz65xmXmY_Xy4o"
-        ///   ]
-        ///}
-        /// ```
-        #[allow(dead_code)]
-        #[derive(Debug, Deserialize)]
-        struct Res {
-            status: String,
-            expires: String,
-            identifiers: Vec<Identifier>,
-            profile: String,
-            finalize: String,
-            authorizations: Vec<Url>,
-        }
-
-        let _: (_, serde_json::Value) = self
+        let (_, order_status): (_, OrderStatus) = self
             .client
             .post(
                 url,
@@ -517,6 +428,32 @@ impl AcmeApi<Account> {
             )
             .await?;
 
-        Ok(())
+        Ok(order_status)
+    }
+
+    pub(crate) async fn challanges(
+        &self,
+        order_status: OrderStatus,
+    ) -> Result<Vec<Order>> {
+        let authorizations: Vec<Url> = order_status.authorizations;
+        let auth: JwkOrKid = self.account.account_id().into();
+        let mut orders: Vec<Order> = Vec::new();
+
+        for authorization in authorizations {
+            let url = authorization;
+            let (_, auth_z): (_, AuthZ) = self
+                .client
+                .post(
+                    &url,
+                    self.account.private_key().clone(),
+                    auth.clone(),
+                    AcmeApiBody::EMPTY_STRING,
+                )
+                .await?;
+
+            orders.push(Order::from((url, auth_z)));
+        }
+
+        Ok(orders)
     }
 }
