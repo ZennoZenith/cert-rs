@@ -21,7 +21,14 @@ pub async fn init(acme_uri: Url, client: Client) -> Result<()> {
 
     acme_api.orders().await?;
 
-    let (order_url, _) = acme_api.create_order().await?;
+    let domains: Vec<String> = vec![
+        // "example.com".into(),
+        "*.example.com".into(),
+        // "*.test.com".into(),
+        // "test.com".into(),
+    ];
+
+    let (order_url, _) = acme_api.create_order(domains).await?;
 
     let order_status = acme_api.order_status(&order_url).await?;
 

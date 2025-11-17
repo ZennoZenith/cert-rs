@@ -3,17 +3,47 @@ use url::Url;
 
 use crate::challenge::AuthZ;
 
+#[derive(
+    Debug,
+    Clone,
+    Deserialize,
+    Serialize,
+    Default,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
+)]
+#[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "lowercase")]
+pub enum IdentifierType {
+    #[default]
+    #[serde(rename = "dns")]
+    #[strum(serialize = "dns")]
+    Dns,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Identifier {
-    pub(crate) r#type: String,
+    pub(crate) r#type: IdentifierType,
     pub(crate) value: String,
+}
+
+impl<T: ToString> From<T> for Identifier {
+    fn from(value: T) -> Self {
+        Self {
+            r#type: IdentifierType::Dns,
+            value: value.to_string(),
+        }
+    }
 }
 
 /// headers:
 ///
 /// ```json
 ///{
-///    "location": "https://<host>/my-order/FGCGiiJ2yHuTSkNtg7kYJBETqIYlKbtXeqg9KXmIJEg",
+///    "location": "https://example.com/my-order/FGCGiiJ2yHuTSkNtg7kYJBETqIYlKbtXeqg9KXmIJEg",
 ///}
 /// ````
 /// Body
@@ -33,10 +63,10 @@ pub(crate) struct Identifier {
 ///      }
 ///   ],
 ///   "profile": "default", // "shortlived" ...,
-///   "finalize": "https://<host>/finalize-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio",
+///   "finalize": "https://example.com/finalize-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio",
 ///   "authorizations": [
-///      "https://<host>/authZ/hXIxKCZwI8BhmGQhn16d98YMqHw5ldMOnnaGm5O_a34",
-///      "https://<host>/authZ/q1HUYPqI2BFX-DuZhy2UNvNRMGnXxFz65xmXmY_Xy4o"
+///      "https://example.com/authZ/hXIxKCZwI8BhmGQhn16d98YMqHw5ldMOnnaGm5O_a34",
+///      "https://example.com/authZ/q1HUYPqI2BFX-DuZhy2UNvNRMGnXxFz65xmXmY_Xy4o"
 ///   ]
 ///}
 /// ```

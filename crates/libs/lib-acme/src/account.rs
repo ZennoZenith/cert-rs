@@ -9,9 +9,71 @@ use openssl::{
     rsa::Rsa,
     sign::Signer,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use url::Url;
+
+#[derive(
+    Debug,
+    Clone,
+    Deserialize,
+    Serialize,
+    Default,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
+)]
+#[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum AccountStatus {
+    #[default]
+    Valid,
+    Deactivated,
+    Revoked,
+}
+
+///```json
+///{
+///   "status": "valid",
+///   "orders": "https://example.com/list-orderz/26207797f0404df7",
+///   "key": {
+///      "kty": "RSA",
+///      "n": "...",
+///      "e": "..."
+///   }
+///}
+///```
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct Account {
+    pub(crate) status: AccountStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) contact: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) terms_of_service_agreed: Option<bool>,
+    // #[serde(skip_serializing_if = "Option::is_none")]
+    // external_account_binding: Option<serde_json::Value>,
+    /// A Url from which a list of orders submitted by this acocount can be fetched
+    pub(crate) orders: Url,
+}
+
+///```json
+///{
+///   "orders": [
+///      "https://example.com/my-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio"
+///   ]
+///}
+/// ```
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AccountOrdersList {
+    /// List of order url created by the account
+    pub(crate) orders: Vec<Url>,
+}
 
 #[derive(
     Debug,
@@ -79,8 +141,23 @@ impl AccountCert {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(
+    Debug,
+    Clone,
+    Serialize,
+    Default,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
+)]
+#[strum(ascii_case_insensitive)]
+#[non_exhaustive]
 pub(crate) enum JwsAlgorithm {
+    #[default]
+    #[serde(rename = "RS256")]
+    #[strum(serialize = "RS256")]
     RS256,
 }
 
@@ -215,7 +292,7 @@ pub(crate) struct Jws {
 }
 
 impl Jws {
-    pub fn new<T: Serialize>(
+    pub fn new<T: Serialize + Clone>(
         private_key: Rsa<Private>,
         jws_protected_headers: &JwsProtectedHeaders,
         body: AcmeApiBody<T>,
@@ -254,15 +331,15 @@ impl Jws {
 }
 
 #[derive(Debug, Clone)]
-pub struct Account {
+pub struct AccountInternal {
     account_id: Url,
     cert: AccountCert,
     /// self -> to json -> to hex -> base64url
     jwk_thumbprint: JwkThumbprint,
 }
 
-impl Account {
-    pub fn new(account_id: Url, cert: AccountCert) -> Account {
+impl AccountInternal {
+    pub fn new(account_id: Url, cert: AccountCert) -> AccountInternal {
         let jwk_thumbprint = cert.public_key.clone().into();
 
         Self {
@@ -293,7 +370,7 @@ impl Account {
 use crate::acme_bmc::AcmeAccount;
 use crate::api::AcmeApiBody;
 #[cfg(feature = "db")]
-impl TryFrom<AcmeAccount> for Account {
+impl TryFrom<AcmeAccount> for AccountInternal {
     type Error = color_eyre::eyre::Error;
 
     fn try_from(value: AcmeAccount) -> std::result::Result<Self, Self::Error> {

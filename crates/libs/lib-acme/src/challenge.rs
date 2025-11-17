@@ -13,25 +13,25 @@ use crate::order::Identifier;
 ///   "challenges": [
 ///      {
 ///         "type": "http-01",
-///         "url": "https://<host>/chalZ/CBFrgdBV4mLzJh7mkieu7kSZq_Fd02s_YyUrrbB25Ko",
+///         "url": "https://example.com/chalZ/CBFrgdBV4mLzJh7mkieu7kSZq_Fd02s_YyUrrbB25Ko",
 ///         "token": "xJ9Wg4G20OlC5ovxjv3qqTfIJHFdAdlRo8pazT4yHko",
 ///         "status": "pending"
 ///      },
 ///      {
 ///         "type": "dns-01",
-///         "url": "https://<host>/chalZ/UTvYhc4NAEtGOS3yclO4t7eZG3yzQW_Mc0NWjUXhflw",
+///         "url": "https://example.com/chalZ/UTvYhc4NAEtGOS3yclO4t7eZG3yzQW_Mc0NWjUXhflw",
 ///         "token": "K3LldHaVl2Ovrr3M1Y5L09jATVv-enf7R42k4iS-vMU",
 ///         "status": "pending"
 ///      },
 ///      {
 ///         "type": "tls-alpn-01",
-///         "url": "https://<host>/chalZ/qyvqAvbpv3oQLSYX0_73IDHv3Fvuzr-CyszmQb3vQUk",
+///         "url": "https://example.com/chalZ/qyvqAvbpv3oQLSYX0_73IDHv3Fvuzr-CyszmQb3vQUk",
 ///         "token": "KLBhCfj33nyz44aWPfniOPgxskN6psRAlFxSpNdUHG8",
 ///         "status": "pending"
 ///      },
 ///      {
 ///         "type": "dns-account-01",
-///         "url": "https://<host>/chalZ/JgqFvvAs_T8gu1FaIjto0HyKDunr_4JCbnh1vK-Q1xE",
+///         "url": "https://example.com/chalZ/JgqFvvAs_T8gu1FaIjto0HyKDunr_4JCbnh1vK-Q1xE",
 ///         "token": "j0_JMI937tgbIqZ6l0tHyFD7DI6b4lYVxhIf26Opg5E",
 ///         "status": "pending"
 ///      }
@@ -64,7 +64,7 @@ pub(crate) enum ChallengeType {
 ///```json
 ///{
 ///   "type": "http-01",
-///   "url": "https://<host>/chalZ/CBFrgdBV4mLzJh7mkieu7kSZq_Fd02s_YyUrrbB25Ko",
+///   "url": "https://example.com/chalZ/CBFrgdBV4mLzJh7mkieu7kSZq_Fd02s_YyUrrbB25Ko",
 ///   "token": "xJ9Wg4G20OlC5ovxjv3qqTfIJHFdAdlRo8pazT4yHko",
 ///   "status": "pending"
 ///}

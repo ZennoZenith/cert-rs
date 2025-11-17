@@ -9,7 +9,7 @@ use color_eyre::Result;
 use sqlx::prelude::FromRow;
 use url::Url;
 
-use crate::account::{Account, AccountCert, KeyType};
+use crate::account::{AccountInternal, AccountCert, KeyType};
 
 #[derive(Debug, sqlx::Type)]
 #[sqlx(transparent)]
@@ -113,7 +113,7 @@ impl TryFrom<AcmeAccount> for AccountCert {
 pub struct AcmeAccountBmc;
 
 impl AcmeAccountBmc {
-    pub async fn create(mm: &ModelManager, account_c: &Account) -> Result<i64> {
+    pub async fn create(mm: &ModelManager, account_c: &AccountInternal) -> Result<i64> {
         let account_cert = account_c.cert();
         let private_key_pem = account_cert.private_key.private_key_to_pem()?;
         let public_key_pem = account_cert.public_key.public_key_to_pem()?;

@@ -2,7 +2,7 @@ use std::{collections::VecDeque, sync::Mutex};
 
 use color_eyre::{
     Result,
-    eyre::{Context, OptionExt},
+    eyre::{Context, OptionExt, eyre},
 };
 use lib_utils::b64;
 use openssl::{pkey::Private, rsa::Rsa};
@@ -10,25 +10,20 @@ use reqwest::{
     Client, IntoUrl, Response,
     header::{CONTENT_TYPE, HeaderMap, HeaderValue},
 };
-use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use url::Url;
 
 use crate::{
     account::{
-        Account, AccountCert, JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders,
+        Account, AccountCert, AccountInternal, AccountOrdersList,
+        AccountStatus, JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders,
     },
-    challenge::{AuthZ, Challenge, ChallengeType},
+    challenge::ChallengeType,
     directory::AcmeDirectory,
     order::{Identifier, Order, OrderStatus},
 };
-
-struct AcmeClient {
-    client: Client,
-    nonce_url: Url,
-    nonce_store: Mutex<VecDeque<Box<str>>>,
-}
 
 #[cfg(debug_assertions)]
 fn headermap_to_hashmap(
@@ -84,17 +79,30 @@ fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
         .ok_or_eyre("cannot extract location header")?
 }
 
-pub(crate) enum AcmeApiBody<T: Serialize = ()> {
+#[derive(Debug, Clone)]
+pub(crate) enum AcmeApiBody<T: Serialize + Clone = ()> {
     EmptyString,
-    #[allow(dead_code)]
     EmptyObject,
     Other(T),
 }
 
 impl AcmeApiBody<()> {
     pub const EMPTY_STRING: Self = AcmeApiBody::EmptyString;
-    #[allow(dead_code)]
     pub const EMPTY_OBJECT: Self = AcmeApiBody::EmptyObject;
+}
+
+struct ApiResponse<T>
+where
+    T: DeserializeOwned + std::fmt::Debug,
+{
+    headers: HeaderMap,
+    body: T,
+}
+
+struct AcmeClient {
+    client: Client,
+    nonce_url: Url,
+    nonce_store: Mutex<VecDeque<Box<str>>>,
 }
 
 impl AcmeClient {
@@ -150,61 +158,77 @@ impl AcmeClient {
         private_key: Rsa<Private>,
         auth: JwkOrKid,
         body: AcmeApiBody<B>,
-    ) -> Result<(HeaderMap, R)>
+    ) -> Result<ApiResponse<R>>
     where
-        B: Serialize,
+        B: Serialize + Clone,
         R: DeserializeOwned + std::fmt::Debug,
     {
-        // OPTIMIZE: new directly from array without mut
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/jose+json"),
-        );
+        loop {
+            // OPTIMIZE: new directly from array without mut
+            let mut headers = HeaderMap::new();
+            headers.insert(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/jose+json"),
+            );
+            let nonce = &self.get_nonce().await?;
 
-        let nonce = &self.get_nonce().await?;
+            let jws_protected_headers = JwsProtectedHeaders {
+                algorithm: JwsAlgorithm::RS256,
+                url,
+                auth: auth.clone(),
+                nonce,
+            };
 
-        let jws_protected_headers = JwsProtectedHeaders {
-            algorithm: JwsAlgorithm::RS256,
-            url,
-            auth,
-            nonce,
-        };
+            let jws = Jws::new(
+                private_key.clone(),
+                &jws_protected_headers,
+                body.clone(),
+            )?;
 
-        let jws = Jws::new(private_key, &jws_protected_headers, body)?;
+            let res = self
+                .client
+                .post(url.as_str())
+                .headers(headers)
+                .json(&jws)
+                .send()
+                .await?;
 
-        let res = self
-            .client
-            .post(url.as_str())
-            .headers(headers)
-            .json(&jws)
-            .send()
-            .await?;
+            let headers = res.headers().clone();
+            self.enqueue_nonce(&headers);
 
-        let headers = res.headers().clone();
-        self.enqueue_nonce(&headers);
+            let body_text = res.text().await?;
 
-        let body_text = res.text().await?;
+            #[cfg(debug_assertions)]
+            tracing::debug!(
+                "\nurl: {}\nheaders: {}\nbody: {}",
+                url,
+                serde_json::to_string_pretty(&headermap_to_hashmap(&headers))?,
+                body_text,
+            );
 
-        #[cfg(debug_assertions)]
-        tracing::debug!(
-            "\nurl: {}\nheaders: {}\nbody: {}",
-            url,
-            serde_json::to_string_pretty(&headermap_to_hashmap(&headers))?,
-            body_text,
-        );
+            // error body
+            //
+            // {
+            //    "type": "urn:ietf:params:acme:error:badNonce",
+            //    "detail": "JWS has an invalid anti-replay nonce: ...",
+            //    "status": 400
+            // }
 
-        // error body
-        //
-        // {
-        //    "type": "urn:ietf:params:acme:error:badNonce",
-        //    "detail": "JWS has an invalid anti-replay nonce: ...",
-        //    "status": 400
-        // }
-
-        let body: R = serde_json::from_str(&body_text)?;
-
-        Ok((headers, body))
+            // let body: R = serde_json::from_str(&body_text)?;
+            //
+            match serde_json::from_str::<R>(&body_text) {
+                Ok(body) => return Ok(ApiResponse { headers, body }),
+                Err(_) => {
+                    if body_text.contains("urn:ietf:params:acme:error:badNonce")
+                    {
+                        tracing::warn!("Bad nonce. Retrying...");
+                        continue;
+                    } else {
+                        return Err(eyre!(body_text));
+                    }
+                }
+            };
+        }
     }
 }
 
@@ -248,7 +272,10 @@ impl AcmeApi<()> {
 }
 
 impl AcmeApi<()> {
-    fn into_registerd(self, account: Account) -> AcmeApi<Account> {
+    fn into_registerd(
+        self,
+        account: AccountInternal,
+    ) -> AcmeApi<AccountInternal> {
         AcmeApi {
             account,
             client: self.client,
@@ -256,72 +283,42 @@ impl AcmeApi<()> {
         }
     }
 
-    pub async fn register_account(self) -> Result<AcmeApi<Account>> {
+    pub async fn register_account(self) -> Result<AcmeApi<AccountInternal>> {
         let new_account_cert = AccountCert::new()?;
 
         let url = &self.acme_directory.new_account;
-        let jwk: JwkOrKid = new_account_cert.public_key.clone().into();
+        let auth: JwkOrKid = new_account_cert.public_key.clone().into(); // JwkOrKid::Jwk
+        // TODO: Convert to struct
         let body = json!({ "termsOfServiceAgreed": true });
 
-        /// ```json
-        ///{
-        ///   "status": "valid",
-        ///   "orders": "https://<host>/list-orderz/26207797f0404df7",
-        ///   "key": {
-        ///      "kty": "RSA",
-        ///      "n": "tai78f5SXggfzd5Yqnqy557nZT37AHLXQNrCOGS9ilpjU3njHuHjgiRfprsZT8w2WvHbFdUa1qG0L0qD01qMm84T7F1grKWhO6y9tBv7yK06yc9ut2H4qzaPl9_AIsa4b3oWkE6BPed26vJKJ3E_4POersx7MVzz1ptwlUYfxUXdvA4T3qgBG7SsS1ShPZSimRzw5dXGqKzLunvWdKinBehbsL52sXdvwjSdCraYyVMLayk02_Flm6fxcgU1S1vYHCFVHinYR5_HkUWRt_3yRd7i-e0vIW9IZxJlE_2jWdGrcQm5oa771cKUnEXjd13glWmteoyAp7j48f90DHCSorBOvK2ns80UTCnQbBTBtzsOK0OmGWeU7dZnpRxXJFbsIxujxbTCS9SFcuUDZzOiJVHVxiBUF8dRworXJ3j4B5V0YWbpw-nN-qjtHsOfthhpSGHjPb9GIFJaLtY2ll_BPEubMX0z6SvznP64niNCvoEkv8NoQx-_cjenP0cWghOmPQGoGhkVerJ6j7nZfXHTNIbmkYcZB67UN9b_M3EgY9JT5j7vug50pVzMwwH5CAsXYTDpsYWJozeqCb2PTu3XTbJcAYGSbHHEA3Dgb7NaEh9A5Erqrj_BUWeO-e7AqkQFcLQ4lYJ2YXdJTLbHnIVkBKI7hcnh5LrVy7XBk4GmTr0",
-        ///      "e": "AQAB"
-        ///   }
-        ///}
-        /// ```
-        #[allow(dead_code)]
-        #[derive(Debug, Deserialize)]
-        struct Res {
-            status: String,
-            orders: Url,
-        }
-
-        let (headers, _): (_, Res) = self
+        let ApiResponse { headers, .. }: ApiResponse<Account> = self
             .client
             .post(
                 url,
                 new_account_cert.private_key.clone(),
-                jwk,
+                auth,
                 AcmeApiBody::Other(&body),
             )
             .await?;
 
         let account_id: Url = extract_location_header(&headers)?;
 
-        let account = Account::new(account_id, new_account_cert.clone());
+        let account =
+            AccountInternal::new(account_id, new_account_cert.clone());
 
         Ok(self.into_registerd(account))
     }
 }
 
-impl AcmeApi<Account> {
+impl AcmeApi<AccountInternal> {
     async fn orders_url(&self) -> Result<Url> {
         let url = &self.account.account_id();
         let auth: JwkOrKid = self.account.account_id().into();
 
-        /// ```json
-        ///{
-        ///   "status": "valid",
-        ///   "orders": "https://<host>/list-orderz/26207797f0404df7",
-        ///   "key": {
-        ///      "kty": "RSA",
-        ///      "n": "tai78f5SXggfzd5Yqnqy557nZT37AHLXQNrCOGS9ilpjU3njHuHjgiRfprsZT8w2WvHbFdUa1qG0L0qD01qMm84T7F1grKWhO6y9tBv7yK06yc9ut2H4qzaPl9_AIsa4b3oWkE6BPed26vJKJ3E_4POersx7MVzz1ptwlUYfxUXdvA4T3qgBG7SsS1ShPZSimRzw5dXGqKzLunvWdKinBehbsL52sXdvwjSdCraYyVMLayk02_Flm6fxcgU1S1vYHCFVHinYR5_HkUWRt_3yRd7i-e0vIW9IZxJlE_2jWdGrcQm5oa771cKUnEXjd13glWmteoyAp7j48f90DHCSorBOvK2ns80UTCnQbBTBtzsOK0OmGWeU7dZnpRxXJFbsIxujxbTCS9SFcuUDZzOiJVHVxiBUF8dRworXJ3j4B5V0YWbpw-nN-qjtHsOfthhpSGHjPb9GIFJaLtY2ll_BPEubMX0z6SvznP64niNCvoEkv8NoQx-_cjenP0cWghOmPQGoGhkVerJ6j7nZfXHTNIbmkYcZB67UN9b_M3EgY9JT5j7vug50pVzMwwH5CAsXYTDpsYWJozeqCb2PTu3XTbJcAYGSbHHEA3Dgb7NaEh9A5Erqrj_BUWeO-e7AqkQFcLQ4lYJ2YXdJTLbHnIVkBKI7hcnh5LrVy7XBk4GmTr0",
-        ///      "e": "AQAB"
-        ///   }
-        ///}
-        /// ```
-        #[derive(Debug, Deserialize)]
-        struct Res {
-            status: String,
-            orders: Url,
-        }
-
-        let (_, res): (_, Res) = self
+        let ApiResponse {
+            body: Account { status, orders, .. },
+            ..
+        } = self
             .client
             .post(
                 url,
@@ -331,33 +328,23 @@ impl AcmeApi<Account> {
             )
             .await?;
 
-        if res.status != "valid" {
+        if status != AccountStatus::Valid {
             return Err(color_eyre::eyre::eyre!(
                 "account info status not valid"
             ));
         }
-        Ok(res.orders)
+        Ok(orders)
     }
 
-    pub(crate) async fn orders(&self) -> Result<()> {
+    pub(crate) async fn orders(&self) -> Result<Vec<Url>> {
         let url = &self.orders_url().await?;
 
         let auth: JwkOrKid = self.account.account_id().into();
 
-        /// ```json
-        ///{
-        ///   "orders": [
-        ///      "https://<host>/my-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio"
-        ///   ]
-        ///}
-        /// ```
-        #[allow(dead_code)]
-        #[derive(Debug, Deserialize)]
-        struct Res {
-            orders: Vec<serde_json::Value>,
-        }
-
-        let _: (_, Res) = self
+        let ApiResponse {
+            body: AccountOrdersList { orders },
+            ..
+        } = self
             .client
             .post(
                 url,
@@ -367,37 +354,26 @@ impl AcmeApi<Account> {
             )
             .await?;
 
-        Ok(())
+        Ok(orders)
     }
 
-    pub(crate) async fn create_order(&self) -> Result<(Url, OrderStatus)> {
+    pub(crate) async fn create_order(
+        &self,
+        domains: Vec<String>,
+    ) -> Result<(Url, OrderStatus)> {
         let url = &self.acme_directory.new_order;
 
         let auth: JwkOrKid = self.account.account_id().into();
 
-        let identifiers = [
-            // Identifier {
-            //     r#type: "dns".into(),
-            //     value: "example.com".into(),
-            // },
-            Identifier {
-                r#type: "dns".into(),
-                value: "*.example.com".into(),
-            },
-            // Identifier {
-            //     r#type: "dns".into(),
-            //     value: "*.test.com".into(),
-            // },
-            // Identifier {
-            //     r#type: "dns".into(),
-            //     value: "test.com".into(),
-            // },
-        ];
-        let body = json!({
-            "identifiers": identifiers
-        });
+        let identifiers: Vec<Identifier> =
+            domains.iter().map(|v| v.into()).collect();
 
-        let (headers, order_status): (_, OrderStatus) = self
+        let body = json!({"identifiers":identifiers});
+
+        let ApiResponse {
+            body: order_status,
+            headers,
+        } = self
             .client
             .post(
                 url,
@@ -420,7 +396,9 @@ impl AcmeApi<Account> {
 
         let auth: JwkOrKid = self.account.account_id().into();
 
-        let (_, order_status): (_, OrderStatus) = self
+        let ApiResponse {
+            body: ordre_status, ..
+        } = self
             .client
             .post(
                 url,
@@ -430,7 +408,7 @@ impl AcmeApi<Account> {
             )
             .await?;
 
-        Ok(order_status)
+        Ok(ordre_status)
     }
 
     pub(crate) async fn challenges(
@@ -443,7 +421,7 @@ impl AcmeApi<Account> {
 
         for authorization in authorizations {
             let url = authorization;
-            let (_, auth_z): (_, AuthZ) = self
+            let ApiResponse { body: auth_z, .. } = self
                 .client
                 .post(
                     &url,
@@ -531,7 +509,7 @@ impl AcmeApi<Account> {
         let url = &challenge.challange_response_url;
         let auth: JwkOrKid = self.account.account_id().into();
 
-        let (_, _): (_, serde_json::Value) = self
+        let _: ApiResponse<serde_json::Value> = self
             .client
             .post(
                 url,
@@ -551,7 +529,7 @@ impl AcmeApi<Account> {
         let url = &challenge.authz_url;
         let auth: JwkOrKid = self.account.account_id().into();
 
-        let (_, _): (_, serde_json::Value) = self
+        let _: ApiResponse<serde_json::Value> = self
             .client
             .post(
                 url,
