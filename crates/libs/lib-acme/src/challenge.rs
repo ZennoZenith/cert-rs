@@ -1,78 +1,88 @@
-use serde::Deserialize;
+use lib_utils::time::TimeRfc3339;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::order::Identifier;
-
-///```json
-///{
-///   "status": "pending",
-///   "identifier": {
-///      "type": "dns",
-///      "value": "test.com"
-///   },
-///   "challenges": [
-///      {
-///         "type": "http-01",
-///         "url": "https://example.com/chalZ/CBFrgdBV4mLzJh7mkieu7kSZq_Fd02s_YyUrrbB25Ko",
-///         "token": "xJ9Wg4G20OlC5ovxjv3qqTfIJHFdAdlRo8pazT4yHko",
-///         "status": "pending"
-///      },
-///      {
-///         "type": "dns-01",
-///         "url": "https://example.com/chalZ/UTvYhc4NAEtGOS3yclO4t7eZG3yzQW_Mc0NWjUXhflw",
-///         "token": "K3LldHaVl2Ovrr3M1Y5L09jATVv-enf7R42k4iS-vMU",
-///         "status": "pending"
-///      },
-///      {
-///         "type": "tls-alpn-01",
-///         "url": "https://example.com/chalZ/qyvqAvbpv3oQLSYX0_73IDHv3Fvuzr-CyszmQb3vQUk",
-///         "token": "KLBhCfj33nyz44aWPfniOPgxskN6psRAlFxSpNdUHG8",
-///         "status": "pending"
-///      },
-///      {
-///         "type": "dns-account-01",
-///         "url": "https://example.com/chalZ/JgqFvvAs_T8gu1FaIjto0HyKDunr_4JCbnh1vK-Q1xE",
-///         "token": "j0_JMI937tgbIqZ6l0tHyFD7DI6b4lYVxhIf26Opg5E",
-///         "status": "pending"
-///      }
-///   ],
-///   "expires": "2025-11-16T06:06:10Z"
-///}
-///```
-#[derive(Debug, Deserialize)]
-pub(crate) struct AuthZ {
-    pub(crate) status: String,
-    pub(crate) identifier: Identifier,
-    pub(crate) challenges: Vec<Challenge>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) wildcard: Option<bool>,
-    pub(crate) expires: String,
-}
-
-#[derive(Debug, Deserialize, PartialEq, Eq)]
-pub(crate) enum ChallengeType {
+#[derive(
+    Debug,
+    Clone,
+    Deserialize,
+    Serialize,
+    Default,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
+)]
+#[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "kebab-case")]
+#[serde(rename_all = "kebab-case")]
+pub enum ChallengeType {
+    #[default]
     #[serde(rename = "http-01")]
+    #[strum(serialize = "http-01")]
     Http01,
+
     #[serde(rename = "dns-01")]
+    #[strum(serialize = "dns-01")]
     Dns01,
+
     #[serde(rename = "tls-alpn-01")]
+    #[strum(serialize = "tls-alpn-01")]
     TlsAlpn01,
+
     #[serde(rename = "dns-account-01")]
+    #[strum(serialize = "dns-account-01")]
     DnsAccount01,
 }
 
-///```json
-///{
-///   "type": "http-01",
-///   "url": "https://example.com/chalZ/CBFrgdBV4mLzJh7mkieu7kSZq_Fd02s_YyUrrbB25Ko",
-///   "token": "xJ9Wg4G20OlC5ovxjv3qqTfIJHFdAdlRo8pazT4yHko",
-///   "status": "pending"
-///}
-///```
-#[derive(Debug, Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Deserialize,
+    Serialize,
+    Default,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
+)]
+#[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum ChallengeStatus {
+    #[default]
+    Pending,
+    Processing,
+    Valid,
+    Invaid,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 pub(crate) struct Challenge {
     pub(crate) r#type: ChallengeType,
     pub(crate) url: Url,
+    pub(crate) status: ChallengeStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) validated: Option<TimeRfc3339>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<serde_json::Value>,
+
+    /// Specific to challenge type
     pub(crate) token: String,
-    pub(crate) status: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct ChallengeResponder {
+    pub domain: String,
+    pub r#type: ChallengeType,
+    pub token: String,
+    /// {token}.{jwk_thumbprint}, used of http-01 challange
+    pub keyauth: String,
+    /// keyauth -> sha256 -> bash64url, used of dns-01 challange
+    pub sha_256_keyauth: String,
+    pub challange_response_url: Url,
+    pub authorization_url: Url,
 }

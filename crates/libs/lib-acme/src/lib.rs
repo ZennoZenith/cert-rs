@@ -3,6 +3,7 @@ mod acme_bmc;
 
 mod account;
 mod api;
+mod authorization;
 mod challenge;
 mod directory;
 mod handler;

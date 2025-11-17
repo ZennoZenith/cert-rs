@@ -36,17 +36,6 @@ pub(crate) enum AccountStatus {
     Revoked,
 }
 
-///```json
-///{
-///   "status": "valid",
-///   "orders": "https://example.com/list-orderz/26207797f0404df7",
-///   "key": {
-///      "kty": "RSA",
-///      "n": "...",
-///      "e": "..."
-///   }
-///}
-///```
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Account {
@@ -55,19 +44,13 @@ pub(crate) struct Account {
     pub(crate) contact: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) terms_of_service_agreed: Option<bool>,
-    // #[serde(skip_serializing_if = "Option::is_none")]
-    // external_account_binding: Option<serde_json::Value>,
+    // TODO: external_account_binding object type
+    #[serde(skip_serializing_if = "Option::is_none")]
+    external_account_binding: Option<serde_json::Value>,
     /// A Url from which a list of orders submitted by this acocount can be fetched
     pub(crate) orders: Url,
 }
 
-///```json
-///{
-///   "orders": [
-///      "https://example.com/my-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio"
-///   ]
-///}
-/// ```
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AccountOrdersList {

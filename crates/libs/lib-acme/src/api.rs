@@ -20,9 +20,10 @@ use crate::{
         Account, AccountCert, AccountInternal, AccountOrdersList,
         AccountStatus, JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders,
     },
-    challenge::ChallengeType,
+    authorization::AuthorizationWithUrl,
+    challenge::{Challenge, ChallengeResponder, ChallengeType},
     directory::AcmeDirectory,
-    order::{Identifier, Order, OrderStatus},
+    order::{Identifier, Order},
 };
 
 #[cfg(debug_assertions)]
@@ -218,13 +219,14 @@ impl AcmeClient {
             //
             match serde_json::from_str::<R>(&body_text) {
                 Ok(body) => return Ok(ApiResponse { headers, body }),
-                Err(_) => {
+                Err(e) => {
                     if body_text.contains("urn:ietf:params:acme:error:badNonce")
                     {
                         tracing::warn!("Bad nonce. Retrying...");
                         continue;
                     } else {
-                        return Err(eyre!(body_text));
+                        tracing::error!("{}", e);
+                        return Err(eyre!("response body: {}", body_text));
                     }
                 }
             };
@@ -341,6 +343,8 @@ impl AcmeApi<AccountInternal> {
 
         let auth: JwkOrKid = self.account.account_id().into();
 
+        // TODO: The server may return incomplete list
+        // check of Link header with rel="next" for more orders
         let ApiResponse {
             body: AccountOrdersList { orders },
             ..
@@ -357,10 +361,11 @@ impl AcmeApi<AccountInternal> {
         Ok(orders)
     }
 
+    /// Return Url: ordre url
     pub(crate) async fn create_order(
         &self,
         domains: Vec<String>,
-    ) -> Result<(Url, OrderStatus)> {
+    ) -> Result<(Url, Order)> {
         let url = &self.acme_directory.new_order;
 
         let auth: JwkOrKid = self.account.account_id().into();
@@ -388,10 +393,7 @@ impl AcmeApi<AccountInternal> {
         Ok((order_url, order_status))
     }
 
-    pub(crate) async fn order_status(
-        &self,
-        order_url: &Url,
-    ) -> Result<OrderStatus> {
+    pub(crate) async fn order_status(&self, order_url: &Url) -> Result<Order> {
         let url = order_url;
 
         let auth: JwkOrKid = self.account.account_id().into();
@@ -413,15 +415,18 @@ impl AcmeApi<AccountInternal> {
 
     pub(crate) async fn challenges(
         &self,
-        order_status: OrderStatus,
-    ) -> Result<Vec<Order>> {
-        let authorizations: Vec<Url> = order_status.authorizations;
+        order: Order,
+    ) -> Result<Vec<AuthorizationWithUrl>> {
+        let authorization_url: Vec<Url> = order.authorizations;
         let auth: JwkOrKid = self.account.account_id().into();
-        let mut orders: Vec<Order> = Vec::new();
+        let mut authorization_with_urls = Vec::new();
 
-        for authorization in authorizations {
+        for authorization in authorization_url {
             let url = authorization;
-            let ApiResponse { body: auth_z, .. } = self
+            let ApiResponse {
+                body: authorization,
+                ..
+            } = self
                 .client
                 .post(
                     &url,
@@ -431,102 +436,95 @@ impl AcmeApi<AccountInternal> {
                 )
                 .await?;
 
-            orders.push(Order::from((url, auth_z)));
+            authorization_with_urls
+                .push(AuthorizationWithUrl { url, authorization });
         }
 
-        Ok(orders)
+        Ok(authorization_with_urls)
     }
 
     pub(crate) async fn clean_challenges(
         &self,
-        orders: Vec<Order>,
-    ) -> Result<Vec<ChallengeToken>> {
-        let (dns_01_challenges, http_01_challenges): (Vec<_>, Vec<_>) = orders
-            .into_iter()
-            .partition(|v| v.auth_z.wildcard.unwrap_or_default());
-
+        authorization_with_url: &[AuthorizationWithUrl],
+    ) -> Result<Vec<ChallengeResponder>> {
         let jwk_thumbprint = self.account.jwk_thumbprint();
 
-        let _http_01_challenges_tokens: Vec<ChallengeToken> =
-            http_01_challenges
+        let challenge_responders: Vec<ChallengeResponder> =
+            authorization_with_url
                 .into_iter()
                 .filter_map(|v| {
-                    v.auth_z
+                    v.authorization
                         .challenges
+                        .clone()
                         .into_iter()
-                        .find(|v| v.r#type == ChallengeType::Http01)
+                        .find(|v| {
+                            v.r#type == ChallengeType::Http01
+                                || v.r#type == ChallengeType::Dns01
+                        })
                         .map(|t| {
-                            (v.auth_z.identifier.value, v.authorization, t)
+                            (
+                                v.authorization.identifier.value.clone(),
+                                v.url.clone(),
+                                t,
+                            )
                         })
                 })
-                .map(|(domain, authz_url, challenge)| {
+                .map(|(domain, authorization_url, challenge)| {
                     let keyauth =
                         format!("{}.{}", challenge.token, jwk_thumbprint);
                     let hash = Sha256::digest(&keyauth).to_vec();
                     let sha_256_keyauth = b64::b64u_encode(hash);
-                    ChallengeToken {
+                    ChallengeResponder {
+                        r#type: challenge.r#type,
                         domain,
                         token: challenge.token,
                         keyauth,
                         sha_256_keyauth,
                         challange_response_url: challenge.url,
-                        authz_url,
+                        authorization_url,
                     }
                 })
                 .collect();
 
-        let dns_01_challenges_tokens: Vec<ChallengeToken> = dns_01_challenges
-            .into_iter()
-            .filter_map(|v| {
-                v.auth_z
-                    .challenges
-                    .into_iter()
-                    .find(|v| v.r#type == ChallengeType::Dns01)
-                    .map(|t| (v.auth_z.identifier.value, v.authorization, t))
-            })
-            .map(|(domain, authz_url, challenge)| {
-                let keyauth = format!("{}.{}", challenge.token, jwk_thumbprint);
-                let hash = Sha256::digest(&keyauth).to_vec();
-                let sha_256_keyauth = b64::b64u_encode(hash);
-                ChallengeToken {
-                    domain,
-                    token: challenge.token,
-                    keyauth,
-                    sha_256_keyauth,
-                    challange_response_url: challenge.url,
-                    authz_url,
-                }
-            })
-            .collect();
-
-        Ok(dns_01_challenges_tokens)
+        Ok(challenge_responders)
     }
 
-    pub(crate) async fn prove_challenge(
+    pub(crate) async fn respond_to_challanges(
         &self,
-        challenge: &ChallengeToken,
-    ) -> Result<()> {
-        let url = &challenge.challange_response_url;
-        let auth: JwkOrKid = self.account.account_id().into();
+        authorization_with_url: &[AuthorizationWithUrl],
+    ) -> Result<Vec<Challenge>> {
+        let challenge_responders =
+            self.clean_challenges(authorization_with_url).await?;
 
-        let _: ApiResponse<serde_json::Value> = self
-            .client
-            .post(
-                url,
-                self.account.private_key().clone(),
-                auth.clone(),
-                AcmeApiBody::EMPTY_OBJECT,
-            )
-            .await?;
+        let mut challanges = Vec::new();
 
-        Ok(())
+        for challenge_responder in challenge_responders {
+            let url = &challenge_responder.challange_response_url;
+            let auth: JwkOrKid = self.account.account_id().into();
+
+            let ApiResponse {
+                body: challange, ..
+            } = self
+                .client
+                .post(
+                    url,
+                    self.account.private_key().clone(),
+                    auth.clone(),
+                    AcmeApiBody::EMPTY_OBJECT,
+                )
+                .await?;
+
+            challanges.push(challange);
+        }
+
+        Ok(challanges)
     }
 
     pub(crate) async fn poll_challange(
         &self,
-        challenge: &ChallengeToken,
+        challenge: &ChallengeResponder,
     ) -> Result<()> {
-        let url = &challenge.authz_url;
+        let url = &challenge.authorization_url;
         let auth: JwkOrKid = self.account.account_id().into();
 
         let _: ApiResponse<serde_json::Value> = self
@@ -541,14 +539,4 @@ impl AcmeApi<AccountInternal> {
 
         Ok(())
     }
-}
-
-#[derive(Debug)]
-pub struct ChallengeToken {
-    pub domain: String,
-    pub token: String,
-    pub keyauth: String,
-    pub sha_256_keyauth: String,
-    pub challange_response_url: Url,
-    pub authz_url: Url,
 }

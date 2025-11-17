@@ -1,7 +1,6 @@
+use lib_utils::time::TimeRfc3339;
 use serde::{Deserialize, Serialize};
 use url::Url;
-
-use crate::challenge::AuthZ;
 
 #[derive(
     Debug,
@@ -24,7 +23,7 @@ pub enum IdentifierType {
     Dns,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct Identifier {
     pub(crate) r#type: IdentifierType,
     pub(crate) value: String,
@@ -39,58 +38,50 @@ impl<T: ToString> From<T> for Identifier {
     }
 }
 
-/// headers:
-///
-/// ```json
-///{
-///    "location": "https://example.com/my-order/FGCGiiJ2yHuTSkNtg7kYJBETqIYlKbtXeqg9KXmIJEg",
-///}
-/// ````
-/// Body
-///
-/// ```jsonc
-///{
-///   "status": "pending",
-///   "expires": "2025-11-16T18:33:30Z",
-///   "identifiers": [
-///      {
-///         "type": "dns",
-///         "value": "example.com"
-///      },
-///      {
-///         "type": "dns",
-///         "value": "*.example.com"
-///      }
-///   ],
-///   "profile": "default", // "shortlived" ...,
-///   "finalize": "https://example.com/finalize-order/Mkwup-NKFRSiVdl3Mjc7c0y0shW6Em0--gZLe9KQkio",
-///   "authorizations": [
-///      "https://example.com/authZ/hXIxKCZwI8BhmGQhn16d98YMqHw5ldMOnnaGm5O_a34",
-///      "https://example.com/authZ/q1HUYPqI2BFX-DuZhy2UNvNRMGnXxFz65xmXmY_Xy4o"
-///   ]
-///}
-/// ```
-#[derive(Debug, Deserialize)]
-pub(crate) struct OrderStatus {
-    pub(crate) status: String,
-    pub(crate) expires: String,
-    pub(crate) identifiers: Vec<Identifier>,
-    pub(crate) profile: String,
-    pub(crate) finalize: Url,
-    pub(crate) authorizations: Vec<Url>,
+#[derive(
+    Debug,
+    Clone,
+    Deserialize,
+    Serialize,
+    Default,
+    strum_macros::Display,
+    strum_macros::EnumString,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
+)]
+#[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
+#[non_exhaustive]
+pub(crate) enum OrderStatus {
+    #[default]
+    Pending,
+    Ready,
+    Processing,
+    Valid,
+    Invalid,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub(crate) struct Order {
-    pub(crate) authorization: Url,
-    pub(crate) auth_z: AuthZ,
-}
+    pub(crate) status: OrderStatus,
+    pub(crate) identifiers: Vec<Identifier>,
+    pub(crate) authorizations: Vec<Url>,
+    pub(crate) finalize: Url,
 
-impl From<(Url, AuthZ)> for Order {
-    fn from((url, auth_z): (Url, AuthZ)) -> Self {
-        Self {
-            authorization: url,
-            auth_z,
-        }
-    }
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) expires: Option<TimeRfc3339>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) profile: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) not_before: Option<TimeRfc3339>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) not_after: Option<TimeRfc3339>,
+    // TODO: error object type
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) error: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) certificate: Option<Url>,
 }
