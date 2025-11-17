@@ -17,8 +17,8 @@ use url::Url;
 
 use crate::{
     account::{
-        Account, AccountCert, AccountInternal, AccountOrdersList,
-        AccountStatus, JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders,
+        Account, AccountOrdersList, AccountStatus, JwkOrKid, Jws, JwsAlgorithm,
+        JwsProtectedHeaders, RegisteredAccount,
     },
     authorization::AuthorizationWithUrl,
     challenge::{Challenge, ChallengeResponder, ChallengeType},
@@ -276,8 +276,8 @@ impl AcmeApi<()> {
 impl AcmeApi<()> {
     fn into_registerd(
         self,
-        account: AccountInternal,
-    ) -> AcmeApi<AccountInternal> {
+        account: RegisteredAccount,
+    ) -> AcmeApi<RegisteredAccount> {
         AcmeApi {
             account,
             client: self.client,
@@ -285,34 +285,31 @@ impl AcmeApi<()> {
         }
     }
 
-    pub async fn register_account(self) -> Result<AcmeApi<AccountInternal>> {
-        let new_account_cert = AccountCert::new()?;
+    pub async fn register_account(self) -> Result<AcmeApi<RegisteredAccount>> {
+        let private_key = Rsa::generate(4096)?;
+        let public_key_pem = private_key.public_key_to_pem()?;
+        let public_key = Rsa::public_key_from_pem(&public_key_pem)?;
 
         let url = &self.acme_directory.new_account;
-        let auth: JwkOrKid = new_account_cert.public_key.clone().into(); // JwkOrKid::Jwk
+        let auth: JwkOrKid = public_key.into(); // JwkOrKid::Jwk
+
         // TODO: Convert to struct
         let body = json!({ "termsOfServiceAgreed": true });
 
         let ApiResponse { headers, .. }: ApiResponse<Account> = self
             .client
-            .post(
-                url,
-                new_account_cert.private_key.clone(),
-                auth,
-                AcmeApiBody::Other(&body),
-            )
+            .post(url, private_key.clone(), auth, AcmeApiBody::Other(&body))
             .await?;
 
         let account_id: Url = extract_location_header(&headers)?;
 
-        let account =
-            AccountInternal::new(account_id, new_account_cert.clone());
+        let account = RegisteredAccount::new(account_id, private_key);
 
         Ok(self.into_registerd(account))
     }
 }
 
-impl AcmeApi<AccountInternal> {
+impl AcmeApi<RegisteredAccount> {
     async fn orders_url(&self) -> Result<Url> {
         let url = &self.account.account_id();
         let auth: JwkOrKid = self.account.account_id().into();
@@ -451,7 +448,7 @@ impl AcmeApi<AccountInternal> {
 
         let challenge_responders: Vec<ChallengeResponder> =
             authorization_with_url
-                .into_iter()
+                .iter()
                 .filter_map(|v| {
                     v.authorization
                         .challenges
@@ -520,23 +517,24 @@ impl AcmeApi<AccountInternal> {
         Ok(challanges)
     }
 
-    pub(crate) async fn poll_challange(
-        &self,
-        challenge: &ChallengeResponder,
-    ) -> Result<()> {
-        let url = &challenge.authorization_url;
-        let auth: JwkOrKid = self.account.account_id().into();
+    // /// Poll specific challange
+    // pub(crate) async fn poll_challange(
+    //     &self,
+    //     challenge: &ChallengeResponder,
+    // ) -> Result<()> {
+    //     let url = &challenge.authorization_url;
+    //     let auth: JwkOrKid = self.account.account_id().into();
 
-        let _: ApiResponse<serde_json::Value> = self
-            .client
-            .post(
-                url,
-                self.account.private_key().clone(),
-                auth.clone(),
-                AcmeApiBody::EMPTY_STRING,
-            )
-            .await?;
+    //     let _: ApiResponse<serde_json::Value> = self
+    //         .client
+    //         .post(
+    //             url,
+    //             self.account.private_key().clone(),
+    //             auth.clone(),
+    //             AcmeApiBody::EMPTY_STRING,
+    //         )
+    //         .await?;
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 }

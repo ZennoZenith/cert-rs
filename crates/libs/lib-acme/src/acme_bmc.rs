@@ -6,10 +6,11 @@ use lib_core::model::ModelManager;
 use lib_utils::time::TimeRfc3339;
 
 use color_eyre::Result;
+use openssl::rsa::Rsa;
 use sqlx::prelude::FromRow;
 use url::Url;
 
-use crate::account::{AccountInternal, AccountCert, KeyType};
+use crate::account::{RegisteredAccount, KeyType};
 
 #[derive(Debug, sqlx::Type)]
 #[sqlx(transparent)]
@@ -41,7 +42,6 @@ pub struct AcmeAccount {
     pub account_id: AccountId,
     pub private_key_pem: Vec<u8>,
     pub public_key_pem: Vec<u8>,
-    pub domain_key_pem: Vec<u8>,
     pub key_type: KeyType,
     pub mtime: String,
     pub ctime: String,
@@ -90,34 +90,22 @@ impl<'q> sqlx::Encode<'q, sqlx::Sqlite> for KeyType {
     }
 }
 
-impl TryFrom<AcmeAccount> for AccountCert {
-    type Error = &'static str;
-
-    fn try_from(value: AcmeAccount) -> std::result::Result<Self, Self::Error> {
-        let AcmeAccount {
-            private_key_pem,
-            public_key_pem,
-            domain_key_pem,
-            ..
-        } = value;
-
-        AccountCert::from_blob(
-            &private_key_pem,
-            &public_key_pem,
-            &domain_key_pem,
-        )
-        .map_err(|_| "error")
-    }
-}
-
 pub struct AcmeAccountBmc;
 
 impl AcmeAccountBmc {
-    pub async fn create(mm: &ModelManager, account_c: &AccountInternal) -> Result<i64> {
-        let account_cert = account_c.cert();
-        let private_key_pem = account_cert.private_key.private_key_to_pem()?;
-        let public_key_pem = account_cert.public_key.public_key_to_pem()?;
-        let domain_key_pem = account_cert._domain_key.private_key_to_pem()?;
+    pub async fn create(
+        mm: &ModelManager,
+        account_c: &RegisteredAccount,
+    ) -> Result<i64> {
+        let private_key = account_c.private_key();
+
+        let private_key_pem = private_key.private_key_to_pem()?;
+        let public_key_pem = private_key.public_key_to_pem().expect(
+            "Unable to convert rsa private key to public_key_pem format",
+        );
+        let public_key = Rsa::public_key_from_pem(&public_key_pem)
+            .expect("Unable to convert public_key_pem to public_key");
+
         let account_id = account_c.account_id().as_str();
 
         // Start the transaction
@@ -130,13 +118,12 @@ impl AcmeAccountBmc {
         let key_type: &'static str = KeyType::Rsa.into();
 
         let sqlx_query = sqlx::query!(
-            "INSERT INTO acme_account (account_id, private_key_pem, public_key_pem, domain_key_pem, key_type, ctime, mtime) 
-                VALUES (?, ?, ?, ?, ?, ?, ?) 
+            "INSERT INTO acme_account (account_id, private_key_pem, public_key_pem, key_type, ctime, mtime) 
+                VALUES (?, ?, ?, ?, ?, ?) 
             RETURNING serial_id;",
             account_id,
             private_key_pem,
             public_key_pem,
-            domain_key_pem,
             key_type,
             now,
             now,
@@ -156,7 +143,7 @@ impl AcmeAccountBmc {
         let user = sqlx::query_as!(
             AcmeAccount,
             r#"SELECT serial_id, account_id, private_key_pem,
-            public_key_pem, domain_key_pem, key_type, ctime, mtime
+            public_key_pem, key_type, ctime, mtime
             FROM acme_account 
             ORDER BY serial_id 
             LIMIT 1;"#,

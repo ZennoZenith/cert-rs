@@ -4,7 +4,6 @@ CREATE TABLE "acme_account" (
   account_id TEXT NOT NULL UNIQUE,
   private_key_pem BLOB NOT NULL,
   public_key_pem BLOB NOT NULL,
-  domain_key_pem BLOB NOT NULL,
   key_type TEXT NOT NULL,
 
   -- timestamps
