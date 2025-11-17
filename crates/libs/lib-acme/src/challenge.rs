@@ -43,14 +43,14 @@ use crate::order::Identifier;
 pub(crate) struct AuthZ {
     pub(crate) status: String,
     pub(crate) identifier: Identifier,
-    pub(crate) challenges: Vec<Challange>,
+    pub(crate) challenges: Vec<Challenge>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) wildcard: Option<bool>,
     pub(crate) expires: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub(crate) enum ChallangeType {
+#[derive(Debug, Deserialize, PartialEq, Eq)]
+pub(crate) enum ChallengeType {
     #[serde(rename = "http-01")]
     Http01,
     #[serde(rename = "dns-01")]
@@ -70,8 +70,8 @@ pub(crate) enum ChallangeType {
 ///}
 ///```
 #[derive(Debug, Deserialize)]
-pub(crate) struct Challange {
-    pub(crate) r#type: ChallangeType,
+pub(crate) struct Challenge {
+    pub(crate) r#type: ChallengeType,
     pub(crate) url: Url,
     pub(crate) token: String,
     pub(crate) status: String,

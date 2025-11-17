@@ -1,11 +1,9 @@
-use std::iter::zip;
-
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::challange::AuthZ;
+use crate::challenge::AuthZ;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub(crate) struct Identifier {
     pub(crate) r#type: String,
     pub(crate) value: String,

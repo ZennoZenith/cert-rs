@@ -12,7 +12,6 @@ workspace = true
 [dependencies]
 # -- App Libs
 lib-utils = { path = "../../libs/lib-utils", features = ["serde", "sqlx"] }
-lib-core = { path = "../../libs/lib-core" }
 # -- Others
 thiserror = { workspace = true }
 color-eyre = { workspace = true }
@@ -26,6 +25,7 @@ serde_json = { workspace = true }
 serde_with = { workspace = true }
 
 sqlx = { workspace = true, optional = true }
+lib-core = { path = "../../libs/lib-core", optional = true }
 
 # -- Async
 tokio = { workspace = true }
@@ -37,4 +37,4 @@ sha2 = { workspace = true }
 
 [features]
 default = []
-db = ["dep:sqlx"]
+db = ["dep:sqlx", "dep:lib-core"]

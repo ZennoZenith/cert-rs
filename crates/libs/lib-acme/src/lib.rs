@@ -3,7 +3,7 @@ mod acme_bmc;
 
 mod account;
 mod api;
-mod challange;
+mod challenge;
 mod directory;
 mod handler;
 mod order;

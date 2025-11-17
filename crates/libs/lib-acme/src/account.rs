@@ -1,4 +1,4 @@
-use std::{str::FromStr, sync::Arc};
+use std::{ops::Deref, str::FromStr};
 
 use lib_utils::b64;
 
@@ -25,10 +25,12 @@ use url::Url;
     Eq,
 )]
 #[strum(ascii_case_insensitive)]
+#[strum(serialize_all = "snake_case")]
 #[non_exhaustive]
 pub enum KeyType {
     #[default]
     #[serde(rename = "RSA")]
+    #[strum(serialize = "RSA")]
     Rsa,
 }
 
@@ -89,17 +91,13 @@ pub(crate) enum JwkOrKid {
     Jwk {
         /// Public key exponent base64 url encoded no pad
         #[serde(rename = "e")]
-        exponent: Arc<str>,
+        exponent: Box<str>,
         /// Key type
         #[serde(rename = "kty")]
         key_type: KeyType,
         /// Public key modulus base64 url encoded no pad
         #[serde(rename = "n")]
-        modulus: Arc<str>,
-
-        #[serde(skip)]
-        /// self -> to json -> to hex -> base64url
-        _jwk_thumbprint: Arc<str>,
+        modulus: Box<str>,
     },
     /// kid is used after acme account creation
     Kid(Url),
@@ -119,23 +117,83 @@ impl From<&Url> for JwkOrKid {
 
 impl From<Rsa<Public>> for JwkOrKid {
     fn from(value: Rsa<Public>) -> Self {
-        let modulus = Arc::from(b64::b64u_encode(value.n().to_vec()));
-        let exponent = Arc::from(b64::b64u_encode(value.e().to_vec()));
+        let modulus = Box::from(b64::b64u_encode(value.n().to_vec()));
+        let exponent = Box::from(b64::b64u_encode(value.e().to_vec()));
+        let key_type = KeyType::Rsa;
+
+        Self::Jwk {
+            exponent,
+            key_type,
+            modulus,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JwkThumbprint(Box<str>);
+
+impl From<Rsa<Public>> for JwkThumbprint {
+    fn from(value: Rsa<Public>) -> Self {
+        let modulus = Box::<str>::from(b64::b64u_encode(value.n().to_vec()));
+        let exponent = Box::<str>::from(b64::b64u_encode(value.e().to_vec()));
         let key_type = KeyType::Rsa;
 
         let jwk = format!(
             r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#
         );
 
-        let hash = Sha256::digest(jwk).to_vec();
-        let jwk_thumbprint = Arc::from(b64::b64u_encode(hash));
+        #[cfg(test)]
+        {
+            assert_eq!(
+                jwk,
+                serde_json::to_string(&serde_json::json!({
+                    "e":exponent,
+                    "kty":key_type,
+                    "n":modulus
+                }))
+                .unwrap()
+            );
+        }
 
-        Self::Jwk {
+        let hash = Sha256::digest(jwk).to_vec();
+
+        Self(Box::from(b64::b64u_encode(hash)))
+    }
+}
+
+impl AsRef<str> for JwkThumbprint {
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Deref for JwkThumbprint {
+    type Target = Box<str>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl TryFrom<JwkOrKid> for JwkThumbprint {
+    type Error = &'static str;
+
+    fn try_from(value: JwkOrKid) -> std::result::Result<Self, Self::Error> {
+        let JwkOrKid::Jwk {
             exponent,
             key_type,
             modulus,
-            _jwk_thumbprint: jwk_thumbprint,
-        }
+        } = value
+        else {
+            return Err("JwkOrKid must have been jwk");
+        };
+
+        let jwk = format!(
+            r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#
+        );
+
+        let hash = Sha256::digest(jwk).to_vec();
+        Ok(Self(Box::from(b64::b64u_encode(hash))))
     }
 }
 
@@ -199,11 +257,19 @@ impl Jws {
 pub struct Account {
     account_id: Url,
     cert: AccountCert,
+    /// self -> to json -> to hex -> base64url
+    jwk_thumbprint: JwkThumbprint,
 }
 
 impl Account {
     pub fn new(account_id: Url, cert: AccountCert) -> Account {
-        Self { account_id, cert }
+        let jwk_thumbprint = cert.public_key.clone().into();
+
+        Self {
+            account_id,
+            cert,
+            jwk_thumbprint,
+        }
     }
 
     pub fn account_id(&self) -> &Url {
@@ -212,6 +278,10 @@ impl Account {
 
     pub fn private_key(&self) -> &Rsa<Private> {
         &self.cert.private_key
+    }
+
+    pub fn jwk_thumbprint(&self) -> &str {
+        &self.jwk_thumbprint
     }
 
     pub fn cert(&self) -> &AccountCert {
@@ -243,7 +313,13 @@ impl TryFrom<AcmeAccount> for Account {
             _domain_key: Rsa::private_key_from_pem(&domain_key_pem)?,
         };
 
-        Ok(Self { account_id, cert })
+        let jwk_thumbprint = cert.public_key.clone().into();
+
+        Ok(Self {
+            account_id,
+            cert,
+            jwk_thumbprint,
+        })
     }
 }
 
@@ -374,7 +450,7 @@ QeCo5tUQkRV4d39agLjXHHcCAwEAAQ==
         else {
             panic!("JwkOrKid not of type Jwk")
         };
-        println!("modulus: {}", modulus);
+        // println!("modulus: {}", modulus);
         assert_eq!(FIXTURE_MODULUS_BASE64_URL_NOPAD, modulus.deref());
 
         Ok(())
@@ -399,8 +475,31 @@ QeCo5tUQkRV4d39agLjXHHcCAwEAAQ==
         else {
             panic!("JwkOrKid not of type Jwk")
         };
-        println!("exponent_base64: {}", exponent);
+        // println!("exponent_base64: {}", exponent);
         assert_eq!(FIXTURE_EXPONENT_BASE64_URL_NOPAD, exponent.deref());
+
+        Ok(())
+    }
+
+    #[test]
+    fn jwk_thumbprint() -> Result<()> {
+        let domain_key =
+            Rsa::generate(4096).unwrap().private_key_to_pem().unwrap();
+
+        let account_cert = AccountCert::from_blob(
+            TEST_PRIVATE_KEY.as_bytes(),
+            TEST_PUBLIC_KEY.as_bytes(),
+            &domain_key,
+        )
+        .unwrap();
+
+        const FIXTURE_JWK_THUMBPRINT: &str =
+            "5BSQDxzIIoXmaszdh9jW9XDkJwWFrC8u0x-2o4yt2sM";
+
+        let jwk_thumbprint: JwkThumbprint = account_cert.public_key.into();
+
+        // println!("jwk_thumbprint: {}", jwk_thumbprint.as_ref());
+        assert_eq!(FIXTURE_JWK_THUMBPRINT, jwk_thumbprint.as_ref());
 
         Ok(())
     }

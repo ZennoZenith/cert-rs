@@ -13,6 +13,7 @@ services:
       acmenet:
         ipv4_address: 10.30.50.2
   challtestsrv:
+    container_name: challtestsrv
     image: ghcr.io/letsencrypt/pebble-challtestsrv:latest
     command: -defaultIPv6 "" -defaultIPv4 10.30.50.3
     ports:

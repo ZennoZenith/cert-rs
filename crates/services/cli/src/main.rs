@@ -103,10 +103,9 @@ async fn main() -> Result<()> {
 
     let _cli_ctx = Ctx::cli_ctx();
 
-    let model_manager = ModelManager::new().await?;
+    let _model_manager = ModelManager::new().await?;
 
-    lib_acme::init(acme_uri, reqwest_client().to_owned(), model_manager)
-        .await?;
+    lib_acme::init(acme_uri, reqwest_client().to_owned()).await?;
 
     Ok(())
 }
