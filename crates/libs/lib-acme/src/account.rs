@@ -329,22 +329,23 @@ mod tests {
 
     use super::*;
 
-    const TEST_PRIVATE_KEY: &str =
-        include_str!("../tests/TEST_PRIVATE_KEY.pem");
+    const FIXTURE_PRIVATE_KEY: &str =
+        include_str!("../tests/FIXTURE_PRIVATE_KEY.pem");
 
-    const TEST_PUBLIC_KEY: &str = include_str!("../tests/TEST_PUBLIC_KEY.pem");
+    const FIXTURE_PUBLIC_KEY: &str =
+        include_str!("../tests/FIXTURE_PUBLIC_KEY.pem");
 
     #[test]
     fn public_key_from_private_key() -> Result<()> {
         let private_key =
-            Rsa::private_key_from_pem(TEST_PRIVATE_KEY.as_bytes()).unwrap();
+            Rsa::private_key_from_pem(FIXTURE_PRIVATE_KEY.as_bytes()).unwrap();
         let public_key = PKey::from_rsa(private_key)
             .unwrap()
             .public_key_to_pem()
             .unwrap();
 
         let public_key_str = String::from_utf8(public_key).unwrap();
-        assert_eq!(public_key_str, TEST_PUBLIC_KEY);
+        assert_eq!(public_key_str, FIXTURE_PUBLIC_KEY);
 
         Ok(())
     }
@@ -352,7 +353,7 @@ mod tests {
     #[test]
     fn public_key_modulus() -> Result<()> {
         let public_key =
-            Rsa::<Public>::public_key_from_pem(TEST_PUBLIC_KEY.as_bytes())?;
+            Rsa::<Public>::public_key_from_pem(FIXTURE_PUBLIC_KEY.as_bytes())?;
 
         const FIXTURE_MODULUS_HEX: &str = "B3ED0EFE7E93A896B6C66B3F91D6D42FC717392DFD58CF6C83E438164EFF497B486740002152A9A9AC0F08CBF30F1657F609D528C633218322825EC5B491DF17848F9EB4162D8CB480CE4402A269E308F8FB2CE60F1B55391D17E3C5551A24B5344AEF2EE4A83275941DD7355EEB2ECB9A4A5C7ED373EABD3580695719FE44BDA466E1B5F663D7E4387977DA6620D6352F9BA6558209979A6D72B31113F4238EBC25459C44060F53C9BA96DCB2479C2A0D2D58CD20EE23AEE1B313C55C44A798FB222870C3F41E6F2F34963903E2264393D146B909EC231F9C6DF0C7BE86844A325AE5368C6A39DFAD2DF0D18B22A80CF828DE19576FB74D13107420B45902D57F51CE2D6BF77EB03E5FAE0526ADEA54FE6059E7C18C02989A0855C505C5A92DACD82BD82ADF27873A546A46C58BD3BB9CBD7132E5959EC1B1A36E05FA066928DAEC70A724CA9A2ED1AC27AA6FCEDB9FC691AC3BEB82552317306D2F4EFEADE640CFAAE7B688DAD00789688BE80DB2C88D325B7599980BCC341297D09AA8187053AA53B6962615C2C9BD0699D4FE9503CC85BB1A13BD1B7C6B09B847C0C681E44845741F9433F1B2FC925F7D59371FD2E96209D67AA04BBE43CC5A36E13787FE775619F89A029E9FE4C2836C2A76D874A6E69383561855112BD907C2ACBDB5C8908F40C9AE8AA62BB50D37CF71452141E0A8E6D510911578777F5A80B8D71C77";
 
@@ -374,7 +375,7 @@ mod tests {
     #[test]
     fn public_key_exponent() -> Result<()> {
         let public_key =
-            Rsa::<Public>::public_key_from_pem(TEST_PUBLIC_KEY.as_bytes())?;
+            Rsa::<Public>::public_key_from_pem(FIXTURE_PUBLIC_KEY.as_bytes())?;
 
         const FIXTURE_EXPONENT_BASE64_URL_NOPAD: &str = "AQAB";
 
@@ -390,7 +391,7 @@ mod tests {
     #[test]
     fn jwk_thumbprint() -> Result<()> {
         let public_key =
-            Rsa::<Public>::public_key_from_pem(TEST_PUBLIC_KEY.as_bytes())?;
+            Rsa::<Public>::public_key_from_pem(FIXTURE_PUBLIC_KEY.as_bytes())?;
 
         const FIXTURE_JWK_THUMBPRINT: &str =
             "5BSQDxzIIoXmaszdh9jW9XDkJwWFrC8u0x-2o4yt2sM";

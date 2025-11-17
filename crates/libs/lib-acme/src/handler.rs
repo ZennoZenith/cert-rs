@@ -32,7 +32,7 @@ pub async fn init(acme_uri: Url, client: Client) -> Result<()> {
 
     let order_status = acme_api.order_status(&order_url).await?;
 
-    let authorization_with_urls = acme_api.challenges(order_status).await?;
+    let authorization_with_urls = acme_api.challenges(&order_status).await?;
 
     let challange_responders =
         acme_api.clean_challenges(&authorization_with_urls).await?;
@@ -74,7 +74,7 @@ pub async fn init(acme_uri: Url, client: Client) -> Result<()> {
 
     for sec in 4..6 {
         tokio::time::sleep(std::time::Duration::from_secs(sec)).await;
-        let _order_status = acme_api.order_status(&order_url).await?;
+        acme_api.order_status(&order_url).await?;
     }
 
     // http_01 challanges
@@ -105,6 +105,13 @@ pub async fn init(acme_uri: Url, client: Client) -> Result<()> {
             .send()
             .await?;
     }
+
+    acme_api.finalize_order(&order_status).await?;
+
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    let order_status = acme_api.order_status(&order_url).await?;
+
+    acme_api.download_cert(&order_status).await?;
 
     Ok(())
 }

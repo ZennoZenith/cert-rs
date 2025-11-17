@@ -5,6 +5,7 @@ mod account;
 mod api;
 mod authorization;
 mod challenge;
+mod csr;
 mod directory;
 mod handler;
 mod order;

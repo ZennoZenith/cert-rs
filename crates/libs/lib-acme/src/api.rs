@@ -5,7 +5,11 @@ use color_eyre::{
     eyre::{Context, OptionExt, eyre},
 };
 use lib_utils::b64;
-use openssl::{pkey::Private, rsa::Rsa};
+use openssl::{
+    pkey::{PKey, Private},
+    rsa::Rsa,
+    x509::X509Req,
+};
 use reqwest::{
     Client, IntoUrl, Response,
     header::{CONTENT_TYPE, HeaderMap, HeaderValue},
@@ -22,6 +26,7 @@ use crate::{
     },
     authorization::AuthorizationWithUrl,
     challenge::{Challenge, ChallengeResponder, ChallengeType},
+    csr::generate_csr,
     directory::AcmeDirectory,
     order::{Identifier, Order},
 };
@@ -412,14 +417,14 @@ impl AcmeApi<RegisteredAccount> {
 
     pub(crate) async fn challenges(
         &self,
-        order: Order,
+        order: &Order,
     ) -> Result<Vec<AuthorizationWithUrl>> {
-        let authorization_url: Vec<Url> = order.authorizations;
+        let authorization_url: &[Url] = &order.authorizations;
         let auth: JwkOrKid = self.account.account_id().into();
         let mut authorization_with_urls = Vec::new();
 
         for authorization in authorization_url {
-            let url = authorization;
+            let url = authorization.clone();
             let ApiResponse {
                 body: authorization,
                 ..
@@ -537,4 +542,59 @@ impl AcmeApi<RegisteredAccount> {
 
     //     Ok(())
     // }
+
+    pub(crate) async fn finalize_order(
+        &self,
+        order: &Order,
+    ) -> Result<X509Req> {
+        let domain_key = Rsa::generate(4096)?;
+        let domain_pkey = PKey::from_rsa(domain_key)?;
+
+        let domains: Vec<String> =
+            order.identifiers.iter().map(|v| v.value.clone()).collect();
+
+        let csr = generate_csr(domain_pkey, &domains)?;
+
+        let csr_der_bytes = csr.to_der()?;
+        let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
+
+        let url = &order.finalize;
+        let auth: JwkOrKid = self.account.account_id().into();
+        let body = serde_json::json!({"csr":csr_der_encoded });
+
+        let _: ApiResponse<Order> = self
+            .client
+            .post(
+                url,
+                self.account.private_key().clone(),
+                auth.clone(),
+                AcmeApiBody::Other(body),
+            )
+            .await?;
+
+        Ok(csr)
+    }
+
+    pub(crate) async fn download_cert(&self, order: &Order) -> Result<String> {
+        let Some(url) = &order.certificate else {
+            return Err(eyre!("Certificate url not present"));
+        };
+
+        let auth: JwkOrKid = self.account.account_id().into();
+
+        // "content-type": "application/pem-certificate-chain; charset=utf-8",
+        let ApiResponse { body, .. }: ApiResponse<String> = self
+            .client
+            .post(
+                url,
+                self.account.private_key().clone(),
+                auth.clone(),
+                AcmeApiBody::EMPTY_STRING,
+            )
+            .await?;
+
+        tracing::info!("Certificate: {}", body);
+
+        Ok(body)
+    }
 }
