@@ -299,7 +299,7 @@ pub struct UnRegisteredAccount;
 pub struct RegisteredAccount {
     account_id: Url,
     private_key: Rsa<Private>,
-    /// jwk -> to json -> to hex -> base64url
+    /// jwk -> to json -> sha256 hash -> base64url
     jwk_thumbprint: JwkThumbprint,
 }
 

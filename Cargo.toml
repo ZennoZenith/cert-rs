@@ -37,7 +37,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = tr
 
 base64 = "0.22"
 sha2 = "0.10"
-hex = "0.4"
 
 [dev-dependencies]
 color-eyre = "0.6"
