@@ -18,6 +18,7 @@ use crate::utils::time::TimeRfc3339;
 #[strum(ascii_case_insensitive)]
 #[strum(serialize_all = "kebab-case")]
 #[serde(rename_all = "kebab-case")]
+#[non_exhaustive]
 pub enum ChallengeType {
     #[default]
     #[serde(rename = "http-01")]
@@ -35,6 +36,9 @@ pub enum ChallengeType {
     #[serde(rename = "dns-account-01")]
     #[strum(serialize = "dns-account-01")]
     DnsAccount01,
+
+    #[serde(untagged)]
+    Unknown(String),
 }
 
 #[derive(

@@ -12,9 +12,11 @@ name = "pebble-test"
 path = "examples/pebble-test/src/main.rs"
 test = true
 
+[[test]]
+name = "pebble"
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
 url = { version = "2", features = ["serde"] }
 chrono = "0.4"
 reqwest = { version = "0.12", features = ["json"] }
@@ -30,8 +32,8 @@ strum_macros = "0.27"
 thiserror = "2"
 color-eyre = "0.6"
 
-tracing = {version = "0.1", optional = true}
-tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true}
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
 
 base64 = "0.22"
 sha2 = "0.10"
@@ -39,6 +41,8 @@ hex = "0.4"
 
 [dev-dependencies]
 color-eyre = "0.6"
+serial_test = "*"
+fake = { version = "4" }
 
 [features]
 default = ["tracing"]

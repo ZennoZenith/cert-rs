@@ -15,6 +15,22 @@ use url::Url;
 
 use crate::api::AcmeApiBody;
 
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountCreate {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terms_of_service_agreed: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contacts: Option<Vec<String>>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub only_return_existing: Option<bool>,
+
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_account_binding: Option<serde_json::Value>,
+}
+
 #[derive(
     Debug,
     Clone,
@@ -277,6 +293,9 @@ impl Jws {
 }
 
 #[derive(Debug, Clone)]
+pub struct UnRegisteredAccount;
+
+#[derive(Debug, Clone)]
 pub struct RegisteredAccount {
     account_id: Url,
     private_key: Rsa<Private>,
@@ -339,10 +358,8 @@ mod tests {
     fn public_key_from_private_key() -> Result<()> {
         let private_key =
             Rsa::private_key_from_pem(FIXTURE_PRIVATE_KEY.as_bytes()).unwrap();
-        let public_key = PKey::from_rsa(private_key)
-            .unwrap()
-            .public_key_to_pem()
-            .unwrap();
+        let public_key =
+            PKey::from_rsa(private_key).unwrap().public_key_to_pem().unwrap();
 
         let public_key_str = String::from_utf8(public_key).unwrap();
         assert_eq!(public_key_str, FIXTURE_PUBLIC_KEY);
@@ -359,11 +376,7 @@ mod tests {
 
         const FIXTURE_MODULUS_BASE64_URL_NOPAD: &str = "s-0O_n6TqJa2xms_kdbUL8cXOS39WM9sg-Q4Fk7_SXtIZ0AAIVKpqawPCMvzDxZX9gnVKMYzIYMigl7FtJHfF4SPnrQWLYy0gM5EAqJp4wj4-yzmDxtVOR0X48VVGiS1NErvLuSoMnWUHdc1Xusuy5pKXH7Tc-q9NYBpVxn-RL2kZuG19mPX5Dh5d9pmINY1L5umVYIJl5ptcrMRE_QjjrwlRZxEBg9TybqW3LJHnCoNLVjNIO4jruGzE8VcRKeY-yIocMP0Hm8vNJY5A-ImQ5PRRrkJ7CMfnG3wx76GhEoyWuU2jGo5360t8NGLIqgM-CjeGVdvt00TEHQgtFkC1X9Rzi1r936wPl-uBSat6lT-YFnnwYwCmJoIVcUFxaktrNgr2CrfJ4c6VGpGxYvTu5y9cTLllZ7BsaNuBfoGaSja7HCnJMqaLtGsJ6pvztufxpGsO-uCVSMXMG0vTv6t5kDPque2iNrQB4loi-gNssiNMlt1mZgLzDQSl9CaqBhwU6pTtpYmFcLJvQaZ1P6VA8yFuxoTvRt8awm4R8DGgeRIRXQflDPxsvySX31ZNx_S6WIJ1nqgS75DzFo24TeH_ndWGfiaAp6f5MKDbCp22HSm5pODVhhVESvZB8KsvbXIkI9Aya6Kpiu1DTfPcUUhQeCo5tUQkRV4d39agLjXHHc";
 
-        let modulus = public_key
-            .n()
-            .to_hex_str()
-            .unwrap()
-            .to_string();
+        let modulus = public_key.n().to_hex_str().unwrap().to_string();
         // println!("modulus: {modulus}");
         assert_eq!(FIXTURE_MODULUS_HEX, modulus);
 

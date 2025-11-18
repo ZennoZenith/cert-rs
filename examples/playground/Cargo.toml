@@ -1,9 +1,0 @@
-[package]
-name = "playground"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-color-eyre = { workspace = true }
-openssl = { version = "0.10", features = ["vendored"] }
-lib-utils = { path = "../../libs/lib-utils", features = ["serde", "sqlx"] }

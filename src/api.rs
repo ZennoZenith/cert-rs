@@ -20,8 +20,9 @@ use url::Url;
 
 use crate::{
     account::{
-        Account, AccountOrdersList, AccountStatus, JwkOrKid, Jws, JwsAlgorithm,
-        JwsProtectedHeaders, RegisteredAccount,
+        Account, AccountCreate, AccountOrdersList, AccountStatus, JwkOrKid,
+        Jws, JwsAlgorithm, JwsProtectedHeaders, RegisteredAccount,
+        UnRegisteredAccount,
     },
     authorization::AuthorizationWithUrl,
     challenge::{Challenge, ChallengeResponder, ChallengeType},
@@ -39,10 +40,7 @@ fn headermap_to_hashmap(
         .iter()
         .filter_map(|(key, value)| {
             // Convert HeaderValue to &str (may fail if not valid UTF-8)
-            value
-                .to_str()
-                .ok()
-                .map(|v| (key.to_string(), v.to_string()))
+            value.to_str().ok().map(|v| (key.to_string(), v.to_string()))
         })
         .collect()
 }
@@ -55,15 +53,13 @@ fn hashmap_to_headermap(
     let mut headers = HeaderMap::new();
 
     for (key, value) in map {
-        let name = match reqwest::header::HeaderName::from_bytes(key.as_bytes())
-        {
-            Ok(n) => n,
-            Err(_) => continue, // skip invalid header names
+        let Ok(name) = reqwest::header::HeaderName::from_bytes(key.as_bytes())
+        else {
+            continue; // skip invalid header names
         };
 
-        let val = match HeaderValue::from_str(&value) {
-            Ok(v) => v,
-            Err(_) => continue, // skip invalid values
+        let Ok(val) = HeaderValue::from_str(&value) else {
+            continue; // skip invalid values
         };
 
         headers.insert(name, val);
@@ -77,13 +73,31 @@ fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
         .get("location")
         .map(|v| {
             String::from(
-                v.to_str()
-                    .wrap_err("location header not utf-8 string")?,
+                v.to_str().wrap_err("location header not utf-8 string")?,
             )
             .parse()
             .wrap_err("location header account_id not a url")
         })
         .ok_or_eyre("cannot extract location header")?
+}
+
+pub fn reqwest_client() -> Client {
+    let client_builder = Client::builder();
+
+    let danger_accept_invalid_certs: bool =
+        std::env::var("DANGER_ACCEPT_INVALID_CERTS")
+            .map(|v| {
+                v.to_lowercase() == "true" || v.parse::<u8>().unwrap_or(0) == 1
+            })
+            .unwrap_or_default();
+
+    let client_builder = if danger_accept_invalid_certs {
+        client_builder.danger_accept_invalid_certs(true)
+    } else {
+        client_builder
+    };
+
+    client_builder.build().expect("Unable to build reqwest client")
 }
 
 #[derive(Debug, Clone)]
@@ -107,9 +121,9 @@ where
 }
 
 struct AcmeClient {
-    client: Client,
     nonce_url: Url,
     nonce_store: Mutex<VecDeque<Box<str>>>,
+    client: Client,
 }
 
 impl AcmeClient {
@@ -144,9 +158,7 @@ impl AcmeClient {
             return Ok(nonce);
         };
 
-        let req = self
-            .nonce(self.nonce_url.as_str())
-            .await?;
+        let req = self.nonce(self.nonce_url.as_str()).await?;
 
         let nonce = Self::extract_nonce(req.headers())
             .ok_or_eyre("replay-nonce header not found in request")?;
@@ -242,43 +254,30 @@ impl AcmeClient {
     }
 }
 
-pub struct AcmeApi<Account = ()> {
+pub struct AcmeApi<Account = UnRegisteredAccount> {
     client: AcmeClient,
     acme_directory: AcmeDirectory,
     account: Account,
 }
 
-impl AcmeApi<()> {
-    pub async fn _new(acme_uri: Url) -> Result<AcmeApi<()>> {
-        let client = Client::new();
-
-        Self::new_from_client(acme_uri, client).await
-    }
-
-    pub async fn new_from_client(
-        acme_uri: Url,
-        client: Client,
-    ) -> Result<AcmeApi<()>> {
-        let acme_directory = client
-            .get(acme_uri)
-            .send()
-            .await?
-            .json::<AcmeDirectory>()
-            .await?;
-
+impl AcmeApi<UnRegisteredAccount> {
+    pub async fn new(
+        acme_directory: AcmeDirectory,
+    ) -> Result<AcmeApi<UnRegisteredAccount>> {
+        let client = reqwest_client();
         Ok(AcmeApi {
             client: AcmeClient {
-                client,
                 nonce_store: Default::default(),
                 nonce_url: acme_directory.new_nonce.clone(),
+                client,
             },
             acme_directory,
-            account: (),
+            account: UnRegisteredAccount,
         })
     }
 }
 
-impl AcmeApi<()> {
+impl AcmeApi<UnRegisteredAccount> {
     fn into_registerd(
         self,
         account: RegisteredAccount,
@@ -290,7 +289,10 @@ impl AcmeApi<()> {
         }
     }
 
-    pub async fn register_account(self) -> Result<AcmeApi<RegisteredAccount>> {
+    pub async fn register_account(
+        self,
+        account_create: AccountCreate,
+    ) -> Result<AcmeApi<RegisteredAccount>> {
         let private_key = Rsa::generate(4096)?;
         let public_key_pem = private_key.public_key_to_pem()?;
         let public_key = Rsa::public_key_from_pem(&public_key_pem)?;
@@ -298,12 +300,14 @@ impl AcmeApi<()> {
         let url = &self.acme_directory.new_account;
         let auth: JwkOrKid = public_key.into(); // JwkOrKid::Jwk
 
-        // TODO: Convert to struct
-        let body = json!({ "termsOfServiceAgreed": true });
-
         let ApiResponse { headers, .. }: ApiResponse<Account> = self
             .client
-            .post(url, private_key.clone(), auth, AcmeApiBody::Other(&body))
+            .post(
+                url,
+                private_key.clone(),
+                auth,
+                AcmeApiBody::Other(account_create),
+            )
             .await?;
 
         let account_id: Url = extract_location_header(&headers)?;
@@ -312,9 +316,57 @@ impl AcmeApi<()> {
 
         Ok(self.into_registerd(account))
     }
+
+    pub async fn fetch_account(
+        &self,
+        private_key: Rsa<Private>,
+    ) -> Result<RegisteredAccount> {
+        let account_create = AccountCreate {
+            terms_of_service_agreed: Some(true),
+            only_return_existing: Some(true),
+            ..Default::default()
+        };
+
+        let public_key_pem = private_key.public_key_to_pem()?;
+        let public_key = Rsa::public_key_from_pem(&public_key_pem)?;
+
+        let url = &self.acme_directory.new_account;
+        let auth: JwkOrKid = public_key.into(); // JwkOrKid::Jwk
+
+        let ApiResponse { headers, .. }: ApiResponse<Account> = self
+            .client
+            .post(
+                url,
+                private_key.clone(),
+                auth,
+                AcmeApiBody::Other(account_create),
+            )
+            .await?;
+
+        let account_id: Url = extract_location_header(&headers)?;
+
+        let account = RegisteredAccount::new(account_id, private_key);
+
+        Ok(account)
+    }
+
+    pub async fn load_account(
+        self,
+        registered_account: RegisteredAccount,
+    ) -> Result<AcmeApi<RegisteredAccount>> {
+        let registered_account = self
+            .fetch_account(registered_account.private_key().clone())
+            .await?;
+
+        Ok(self.into_registerd(registered_account))
+    }
 }
 
 impl AcmeApi<RegisteredAccount> {
+    pub fn registered_account(&self) -> RegisteredAccount {
+        self.account.clone()
+    }
+
     async fn orders_url(&self) -> Result<Url> {
         let url = &self.account.account_id();
         let auth: JwkOrKid = self.account.account_id().into();
@@ -340,7 +392,7 @@ impl AcmeApi<RegisteredAccount> {
         Ok(orders)
     }
 
-    pub async fn orders(&self) -> Result<Vec<Url>> {
+    pub async fn orders_urls(&self) -> Result<Vec<Url>> {
         let url = &self.orders_url().await?;
 
         let auth: JwkOrKid = self.account.account_id().into();
@@ -372,10 +424,8 @@ impl AcmeApi<RegisteredAccount> {
 
         let auth: JwkOrKid = self.account.account_id().into();
 
-        let identifiers: Vec<Identifier> = domains
-            .iter()
-            .map(|v| v.into())
-            .collect();
+        let identifiers: Vec<Identifier> =
+            domains.iter().map(|v| v.into()).collect();
 
         let body = json!({"identifiers":identifiers});
 
@@ -453,53 +503,69 @@ impl AcmeApi<RegisteredAccount> {
     ) -> Result<Vec<ChallengeResponder>> {
         let jwk_thumbprint = self.account.jwk_thumbprint();
 
-        let challenge_responders: Vec<ChallengeResponder> =
-            authorization_with_url
-                .iter()
-                .filter_map(|v| {
-                    v.authorization
-                        .challenges
-                        .clone()
-                        .into_iter()
-                        .find(|v| {
-                            v.r#type == ChallengeType::Http01
-                                || v.r#type == ChallengeType::Dns01
-                        })
-                        .map(|t| {
-                            (
-                                v.authorization.identifier.value.clone(),
-                                v.url.clone(),
-                                t,
-                            )
-                        })
-                })
-                .map(|(domain, authorization_url, challenge)| {
-                    let keyauth =
-                        format!("{}.{}", challenge.token, jwk_thumbprint);
-                    let hash = Sha256::digest(&keyauth).to_vec();
-                    let sha_256_keyauth = b64::b64u_encode(hash);
-                    ChallengeResponder {
-                        r#type: challenge.r#type,
-                        domain,
-                        token: challenge.token,
-                        keyauth,
-                        sha_256_keyauth,
-                        challange_response_url: challenge.url,
-                        authorization_url,
-                    }
-                })
-                .collect();
+        let http_01_challange_responders = authorization_with_url
+            .iter()
+            .filter(|v| !v.authorization.wildcard.unwrap_or_default())
+            .filter_map(|v| {
+                v.authorization
+                    .challenges
+                    .iter()
+                    .find(|t| t.r#type == ChallengeType::Http01)
+                    .map(|challenge| {
+                        let keyauth =
+                            format!("{}.{}", challenge.token, jwk_thumbprint);
+                        let hash = Sha256::digest(&keyauth).to_vec();
+                        let sha_256_keyauth = b64::b64u_encode(hash);
+                        ChallengeResponder {
+                            r#type: challenge.r#type.clone(),
+                            domain: v.authorization.identifier.value.clone(),
+                            token: challenge.token.clone(),
+                            keyauth,
+                            sha_256_keyauth,
+                            challange_response_url: challenge.url.clone(),
+                            authorization_url: v.url.clone(),
+                        }
+                    })
+            });
 
-        Ok(challenge_responders)
+        let dns_01_challange_responders = authorization_with_url
+            .iter()
+            .filter(|v| v.authorization.wildcard.unwrap_or_default())
+            .filter_map(|v| {
+                v.authorization
+                    .challenges
+                    .iter()
+                    .find(|t| t.r#type == ChallengeType::Dns01)
+                    .map(|challenge| {
+                        let keyauth =
+                            format!("{}.{}", challenge.token, jwk_thumbprint);
+                        let hash = Sha256::digest(&keyauth).to_vec();
+                        let sha_256_keyauth = b64::b64u_encode(hash);
+                        ChallengeResponder {
+                            r#type: challenge.r#type.clone(),
+                            domain: v.authorization.identifier.value.clone(),
+                            token: challenge.token.clone(),
+                            keyauth,
+                            sha_256_keyauth,
+                            challange_response_url: challenge.url.clone(),
+                            authorization_url: v.url.clone(),
+                        }
+                    })
+            });
+
+        let challange_responders = http_01_challange_responders
+            .chain(dns_01_challange_responders)
+            .collect();
+
+        Ok(challange_responders)
     }
 
     pub async fn respond_to_challanges(
         &self,
         authorization_with_url: &[AuthorizationWithUrl],
     ) -> Result<Vec<Challenge>> {
-        let challenge_responders = self
-            .clean_challenges(authorization_with_url)
-            .await?;
+        let challenge_responders =
+            self.clean_challenges(authorization_with_url).await?;
 
         let mut challanges = Vec::new();
 
@@ -550,11 +616,8 @@ impl AcmeApi<RegisteredAccount> {
         let domain_key = Rsa::generate(4096)?;
         let domain_pkey = PKey::from_rsa(domain_key)?;
 
-        let domains: Vec<String> = order
-            .identifiers
-            .iter()
-            .map(|v| v.value.clone())
-            .collect();
+        let domains: Vec<String> =
+            order.identifiers.iter().map(|v| v.value.clone()).collect();
 
         let csr = generate_csr(domain_pkey, &domains)?;
 

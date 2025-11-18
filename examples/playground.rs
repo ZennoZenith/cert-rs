@@ -1,5 +1,5 @@
+use base64::{Engine, engine::general_purpose};
 use color_eyre::Result;
-use lib_utils::b64;
 use openssl::{
     hash::MessageDigest,
     pkey::PKey,
@@ -14,9 +14,8 @@ fn main() -> Result<()> {
     color_eyre::install()?;
 
     const FIXTURE_DOMAIN_KEY_PEM: &str =
-        include_str!("../../../libs/lib-acme/tests/FIXTURE_DOMAIN_KEY.pem");
-    const FIXTURE_CSR_PEM: &str =
-        include_str!("../../../libs/lib-acme/tests/FIXTURE_CSR.pem");
+        include_str!("../tests/FIXTURE_DOMAIN_KEY.pem");
+    const FIXTURE_CSR_PEM: &str = include_str!("../tests/FIXTURE_CSR.pem");
 
     let pkey = PKey::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM.as_bytes())?;
 
@@ -55,7 +54,8 @@ fn main() -> Result<()> {
     assert_eq!(csr_pem, FIXTURE_CSR_PEM);
 
     let csr_der_bytes = csr.to_der()?;
-    let csr_der_base64 = b64::b64u_encode(csr_der_bytes);
+
+    let csr_der_base64 = b64u_encode(csr_der_bytes);
 
     // println!("{}", csr_der_base64);
 
@@ -64,4 +64,8 @@ fn main() -> Result<()> {
     assert_eq!(csr_der_base64, FIXTURE_CSR_PEM_BASE64);
 
     Ok(())
+}
+
+fn b64u_encode(content: impl AsRef<[u8]>) -> String {
+    general_purpose::URL_SAFE_NO_PAD.encode(content)
 }

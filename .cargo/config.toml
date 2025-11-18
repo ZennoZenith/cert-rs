@@ -1,6 +1,7 @@
 [env]
 # Scope down tracing, to filter out external lib tracing.
-RUST_LOG = "cert_rs=debug,pebble_test=debug"
+RUST_LOG = "cert_rs=debug,pebble=debug"
 
 TEST_ACME_DIR = "https://localhost:24000/dir"
 TEST_CHALL_TEST_SRV = "http://localhost:8055"
+DANGER_ACCEPT_INVALID_CERTS = "true" ## set true for test only
