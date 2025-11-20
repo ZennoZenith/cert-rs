@@ -145,6 +145,7 @@ impl AcmeClient {
             return;
         };
 
+        #[cfg(feature = "tracing")]
         tracing::warn!("replay-nonce header not found in request");
     }
 
@@ -217,9 +218,12 @@ impl AcmeClient {
             let headers = res.headers().clone();
             self.enqueue_nonce(&headers);
 
+            // let body_bytes = res.bytes().await?;
+            // serde_json::from_slice::<R>(&body_bytes);
             let body_text = res.text().await?;
 
             #[cfg(debug_assertions)]
+            #[cfg(feature = "tracing")]
             tracing::debug!(
                 "\nurl: {}\nheaders: {}\nbody: {}",
                 url,
@@ -242,9 +246,11 @@ impl AcmeClient {
                 Err(e) => {
                     if body_text.contains("urn:ietf:params:acme:error:badNonce")
                     {
+                        #[cfg(feature = "tracing")]
                         tracing::warn!("Bad nonce. Retrying...");
                         continue;
                     } else {
+                        #[cfg(feature = "tracing")]
                         tracing::error!("{}", e);
                         return Err(eyre!("response body: {}", body_text));
                     }
