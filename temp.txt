@@ -1,0 +1,66 @@
+
+  ╔═══════════════════════════════════════════════════╗
+  ║        REVERSE PROXY TEST CLIENT  v0.1.0          ║
+  ║        Rust • clap • tokio • reqwest              ║
+  ╚═══════════════════════════════════════════════════╝
+[crates/cert-rs/src/account.rs:116:9] &response = Response {
+    url: "https://acme-staging-v02.api.letsencrypt.org/acme/new-acct",
+    status: 201,
+    headers: {
+        "server": "nginx",
+        "date": "Sun, 15 Mar 2026 03:34:47 GMT",
+        "content-type": "application/json",
+        "content-length": "818",
+        "boulder-requester": "274251323",
+        "cache-control": "public, max-age=0, no-cache",
+        "link": "<https://acme-staging-v02.api.letsencrypt.org/directory>;rel=\"index\"",
+        "link": "<https://letsencrypt.org/documents/LE-SA-v1.6-August-18-2025.pdf>;rel=\"terms-of-service\"",
+        "location": "https://acme-staging-v02.api.letsencrypt.org/acme/acct/274251323",
+        "replay-nonce": "mSg56xBbLL5K0YbAL8BHkfHOzyZdEWzT7yHbFuI9vMVAZsOx9BI",
+        "x-frame-options": "DENY",
+        "strict-transport-security": "max-age=604800",
+    },
+}
+[crates/cert-rs/src/account.rs:117:17] response.json::<serde_json::Value>().await = Ok(
+    Object {
+        "createdAt": String("2026-03-15T03:34:47.787618518Z"),
+        "key": Object {
+            "e": String("AQAB"),
+            "kty": String("RSA"),
+            "n": String("ntkJUWKcajejE4qjUoLaIosLs5pgGq50W5zD6sXLMWKTuOo2Qrybw8q2wJWdF_so76p9cXrM6sB1DF_DZX7WKYk7xlvV5JHKS5ydYFdAhce8zGsLGTnvz6i-kTXVisdq7nfiopPyGsdEMwChcWBdS_Ex2a6J6fJ1qCJ66HY_pErl32jBHKIeT3sgXkTbaenv3NBrySxVrKkeNgPW_C4YOjlXowSU-eNTKv9Rx58oZT6XABObukIR6F9o9TC3uYtpasfkQy-i7U6IgR0ihjdAK8rZURRdh5bzzCTmVjpDJCrDLGxOcE_thLBmuVIBdCMVzDuxv9SCB8k5u8cEKO1MmqNV4n8NghwnU5uMbkEaw9lHdnM6-l7wZ6h92_fGjlV2-f3VzwbpQYdGN09eSCmKz8KbYP5dcDF_ELKewPD_SL9Ib9MykRu0b4bzdpCE3pT-rI6Q6gEXHT8hESJmPJvZ4UNI4YJiZQB_l30IGI7THJm8at1_njTwDOSjY2RD8EaYqI-KNhu30nxR7AALoIkZLmKYtTxn3RO_17D2gXbDbfKRcPzGM6h6fdp2VFdipPE8-PDnJc-3KjqWOLztbPcNvThI6wGmPCjCf34DD28FwIsoODidExVJOrcJLS9FBsJUFrz0KSMwJ2ZFJfihdR1IsvwVYVC2njQwmT1SBLzY1bU"),
+        },
+        "status": String("valid"),
+    },
+)
+[crates/cert-rs-cli/src/main.rs:72:5] &account = Rsa
+[crates/cert-rs/src/account.rs:204:9] &response = Response {
+    url: "https://acme-staging-v02.api.letsencrypt.org/acme/new-acct",
+    status: 200,
+    headers: {
+        "server": "nginx",
+        "date": "Sun, 15 Mar 2026 03:34:49 GMT",
+        "content-type": "application/json",
+        "content-length": "808",
+        "boulder-requester": "274251323",
+        "cache-control": "public, max-age=0, no-cache",
+        "link": "<https://acme-staging-v02.api.letsencrypt.org/directory>;rel=\"index\"",
+        "location": "https://acme-staging-v02.api.letsencrypt.org/acme/acct/274251323",
+        "replay-nonce": "bRqnZGvucDLWdY-ZBljUiu5SAQwhpAq348iPooAhbwYZXWi8RCw",
+        "x-frame-options": "DENY",
+        "strict-transport-security": "max-age=604800",
+    },
+}
+[crates/cert-rs/src/account.rs:206:17] response.json::<serde_json::Value>().await = Ok(
+    Object {
+        "createdAt": String("2026-03-15T03:34:47Z"),
+        "key": Object {
+            "e": String("AQAB"),
+            "kty": String("RSA"),
+            "n": String("ntkJUWKcajejE4qjUoLaIosLs5pgGq50W5zD6sXLMWKTuOo2Qrybw8q2wJWdF_so76p9cXrM6sB1DF_DZX7WKYk7xlvV5JHKS5ydYFdAhce8zGsLGTnvz6i-kTXVisdq7nfiopPyGsdEMwChcWBdS_Ex2a6J6fJ1qCJ66HY_pErl32jBHKIeT3sgXkTbaenv3NBrySxVrKkeNgPW_C4YOjlXowSU-eNTKv9Rx58oZT6XABObukIR6F9o9TC3uYtpasfkQy-i7U6IgR0ihjdAK8rZURRdh5bzzCTmVjpDJCrDLGxOcE_thLBmuVIBdCMVzDuxv9SCB8k5u8cEKO1MmqNV4n8NghwnU5uMbkEaw9lHdnM6-l7wZ6h92_fGjlV2-f3VzwbpQYdGN09eSCmKz8KbYP5dcDF_ELKewPD_SL9Ib9MykRu0b4bzdpCE3pT-rI6Q6gEXHT8hESJmPJvZ4UNI4YJiZQB_l30IGI7THJm8at1_njTwDOSjY2RD8EaYqI-KNhu30nxR7AALoIkZLmKYtTxn3RO_17D2gXbDbfKRcPzGM6h6fdp2VFdipPE8-PDnJc-3KjqWOLztbPcNvThI6wGmPCjCf34DD28FwIsoODidExVJOrcJLS9FBsJUFrz0KSMwJ2ZFJfihdR1IsvwVYVC2njQwmT1SBLzY1bU"),
+        },
+        "status": String("valid"),
+    },
+)
+
+thread 'main' (278911) panicked at /home/zenith/github/cert-rs/crates/cert-rs/src/account.rs:227:9:
+not yet implemented
