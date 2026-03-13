@@ -18,6 +18,9 @@ fmt:
     echo "Formatting"
     cargo fmt
 
+doc: 
+    # cargo doc --no-deps --document-private-items -p cert-rs
+    cargo doc --no-deps --document-private-items
 
 # integration-test:
 #     DOCKER=true LOG=true ./tests/test.sh

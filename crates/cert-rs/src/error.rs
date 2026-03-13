@@ -1,9 +1,22 @@
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(thiserror::Error, Debug, strum_macros::Display)]
+#[derive(thiserror::Error, Debug)]
 pub enum Error {
-    GetReqwest(String),
-    AcmeDirectoryParse(String),
+    #[error(transparent)]
+    Api(#[from] crate::api::Error),
+
+    #[error("{0}")]
+    Url(String),
+
+    #[error("{0}")]
+    DirectoryParse(String),
+
+    #[error("{0}")]
+    ResponseToText(String),
+
+    #[error("{0}")]
+    Unimplemented(String),
+    // GetReqwest(String),
     // // -- Modules
     // #[error(transparent)]
     // Scheme(#[from] scheme::Error),

@@ -25,11 +25,11 @@ impl fmt::Display for TimeOutOrRange {
 
 // endregion: --- Error
 
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd)]
 pub struct TimeRfc3339(DateTime<Utc>);
 
 impl TimeRfc3339 {
-    pub fn inner(&self) -> DateTime<Utc> {
+    pub const fn inner(&self) -> DateTime<Utc> {
         self.0
     }
 
@@ -50,14 +50,13 @@ impl TimeRfc3339 {
     pub fn now_utc_plus_sec_str(
         time_delta: Duration,
     ) -> std::result::Result<String, TimeOutOrRange> {
-        let new_time = Self::now_utc()
-            .0
-            .checked_add_signed(time_delta)
-            .ok_or(TimeOutOrRange(format!(
+        let new_time = Self::now_utc().0.checked_add_signed(time_delta).ok_or_else(|| {
+            TimeOutOrRange(format!(
                 "{} + {}msec",
                 Self::now_utc().0,
                 time_delta.num_milliseconds()
-            )))?;
+            ))
+        })?;
         Ok(Self(new_time).format_time())
     }
 }
@@ -95,18 +94,15 @@ impl From<DateTime<Utc>> for TimeRfc3339 {
 impl<'de> serde::de::Deserialize<'de> for TimeRfc3339 {
     fn deserialize<D>(
         deserializer: D,
-    ) -> std::result::Result<TimeRfc3339, <D as serde::Deserializer<'de>>::Error>
+    ) -> std::result::Result<Self, <D as serde::Deserializer<'de>>::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        let temp =
-            String::deserialize(deserializer).map(|v| Self::parse_utc(&v));
+        let temp = String::deserialize(deserializer).map(|v| Self::parse_utc(&v));
 
         match temp {
             Ok(v) => v.map_err(|v| {
-                serde::de::Error::custom(format!(
-                    "Invalid Rfc3339 time format: {v}",
-                ))
+                serde::de::Error::custom(format!("Invalid Rfc3339 time format: {v}",))
             }),
             Err(e) => Err(e),
         }
@@ -114,10 +110,7 @@ impl<'de> serde::de::Deserialize<'de> for TimeRfc3339 {
 }
 
 impl serde::Serialize for TimeRfc3339 {
-    fn serialize<S>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -141,7 +134,7 @@ mod tests {
         const TIME: &str = "2020-09-08T13:10:08.511Z";
 
         // -- Exec
-        let _ = TimeRfc3339::try_from(TIME).unwrap();
+        let _ = TimeRfc3339::try_from(TIME)?;
 
         // -- Check
 

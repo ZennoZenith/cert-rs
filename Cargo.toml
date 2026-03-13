@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/cert-rs"]
+members = ["crates/cert-rs", "crates/cert-rs-cli"]
 resolver = "3"
 
 [workspace.package]
@@ -15,4 +15,21 @@ keywords = ["ssl", "letsencrypt", "acme"]
 unsafe_code = "forbid"
 # unused = { level = "allow", priority = -1 } # For exploratory dev.
 
+# [profile.release]
+# lto = true
+# codegen-units = 1
+# panic = "abort"
+# strip = true
+
 [workspace.dependencies]
+tokio = { version = "1", features = [
+  "macros",
+  "rt",
+  "rt-multi-thread",
+  "time",
+] }
+url = { version = "2", features = ["serde"] }
+strum = "0.28"
+strum_macros = "0.28"
+thiserror = "2"
+color-eyre = "0.6"

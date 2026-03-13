@@ -1,7 +1,9 @@
 [package]
 name = "cert-rs"
 version = "0.0.0"
-# description.workspace = true
+description = "..."
+categories = ["acme"]
+
 authors.workspace = true
 license.workspace = true
 edition.workspace = true
@@ -26,27 +28,22 @@ strip = true
 [dependencies]
 # lib-proxy = { path = "../../libs/lib-proxy" }
 
-tokio = { version = "1", features = [
-  "macros",
-  "rt",
-  "rt-multi-thread",
-  "time",
-] }
-url = { version = "2", features = ["serde"] }
+tokio.workspace = true
+url.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
+thiserror.workspace = true
+color-eyre.workspace = true
+
 chrono = "0.4"
 reqwest = { version = "0.13", features = ["json"] }
+http = "1"
+mime = "0.3"
 openssl = { version = "0.10", features = ["vendored"] }
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = { version = "3" }
-
-strum = "0.28"
-strum_macros = "0.28"
-
-thiserror = "2"
-color-eyre = "0.6"
-
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = [
   "env-filter",
@@ -57,7 +54,7 @@ sha2 = "0.10"
 
 [dev-dependencies]
 color-eyre = "0.6"
-serial_test = "*"
+serial_test = "3"
 fake = { version = "4" }
 
 [features]
