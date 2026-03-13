@@ -1,4 +1,4 @@
-use crate::utils::time::TimeRfc3339;
+use crate::time::TimeRfc3339;
 
 use serde::{Deserialize, Serialize};
 use url::Url;

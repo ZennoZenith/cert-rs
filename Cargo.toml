@@ -1,48 +1,18 @@
-[package]
-name = "cert-rs"
-version = "0.0.0"
-edition = "2024"
+[workspace]
+members = ["crates/cert-rs"]
+resolver = "3"
 
-[lints.rust]
+[workspace.package]
+version = "0.0.0"
+description = ""
+authors = ["Zenno Zenith <95485961+ZennoZenith@users.noreply.github.com>"]
+license = "GNU AGPLv3"
+edition = "2024"
+repository = "https://github.com/ZennoZenith/cert-rs"
+keywords = ["ssl", "letsencrypt", "acme"]
+
+[workspace.lints.rust]
 unsafe_code = "forbid"
 # unused = { level = "allow", priority = -1 } # For exploratory dev.
 
-[[example]]
-name = "pebble-test"
-path = "examples/pebble-test/src/main.rs"
-test = true
-
-[[test]]
-name = "pebble"
-
-[dependencies]
-tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "time"] }
-url = { version = "2", features = ["serde"] }
-chrono = "0.4"
-reqwest = { version = "0.13", features = ["json"] }
-openssl = { version = "0.10", features = ["vendored"] }
-
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-serde_with = { version = "3" }
-
-strum = "0.28"
-strum_macros = "0.28"
-
-thiserror = "2"
-color-eyre = "0.6"
-
-tracing = { version = "0.1", optional = true }
-tracing-subscriber = { version = "0.3", features = ["env-filter"], optional = true }
-
-base64 = "0.22"
-sha2 = "0.10"
-
-[dev-dependencies]
-color-eyre = "0.6"
-serial_test = "*"
-fake = { version = "4" }
-
-[features]
-default = ["tracing"]
-tracing = ["dep:tracing", "dep:tracing-subscriber"]
+[workspace.dependencies]

@@ -24,15 +24,21 @@ services:
       - 24000:24000 # HTTPS ACME API
       - 25000:25000 # HTTPS Management API
     volumes:
-      - ./pebble:/pebble
+      - ../pebble:/pebble
     networks:
       acmenet:
         ipv4_address: 10.30.50.2
+
+  ## https://github.com/letsencrypt/pebble/blob/main/cmd/pebble-challtestsrv/README.md
   challtestsrv:
     container_name: challtestsrv
     image: ghcr.io/letsencrypt/pebble-challtestsrv:latest
     command: -defaultIPv6 "" -defaultIPv4 10.30.50.3
     ports:
+      # - 5001:5001
+      # - 5002:5002
+      # - 5003:5003
+      - 8053:8053
       - 8055:8055 # HTTP Management API
     networks:
       acmenet:

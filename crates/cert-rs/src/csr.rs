@@ -64,25 +64,23 @@ mod tests {
     pub type Result<T> = std::result::Result<T, Error>;
     pub type Error = Box<dyn std::error::Error>; // For tests.
 
-    use crate::utils::b64;
+    use crate::b64;
     use openssl::pkey::PKey;
 
     use super::*;
 
     const FIXTURE_DOMAIN_KEY_PEM: &str =
-        include_str!("../tests/FIXTURE_DOMAIN_KEY.pem");
+        include_str!("../../../tests/FIXTURE_DOMAIN_KEY.pem");
 
-    const FIXTURE_CSR_PEM: &str = include_str!("../tests/FIXTURE_CSR.pem");
+    const FIXTURE_CSR_PEM: &str =
+        include_str!("../../../tests/FIXTURE_CSR.pem");
 
     #[test]
     fn csr_ok() -> Result<()> {
         let domain_private_key =
             PKey::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM.as_bytes())?;
 
-        let domains = [
-            String::from("test.com"),
-            String::from("*.test.com"),
-        ];
+        let domains = [String::from("test.com"), String::from("*.test.com")];
 
         let csr = generate_csr(domain_private_key, &domains).unwrap();
 
@@ -98,10 +96,7 @@ mod tests {
         let domain_private_key =
             PKey::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM.as_bytes())?;
 
-        let domains = [
-            String::from("test.com"),
-            String::from("*.test.com"),
-        ];
+        let domains = [String::from("test.com"), String::from("*.test.com")];
 
         let csr = generate_csr(domain_private_key, &domains).unwrap();
 

@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::{
-    challenge::Challenge, order::Identifier, utils::time::TimeRfc3339,
-};
+use crate::{challenge::Challenge, order::Identifier, time::TimeRfc3339};
 
 #[derive(
     Debug,

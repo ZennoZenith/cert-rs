@@ -2,16 +2,16 @@
   "pebble": {
     "listenAddress": "0.0.0.0:24000",
     "managementListenAddress": "0.0.0.0:25000",
-    "certificate": "/pebble/certs/localhost/cert.pem",
-    "privateKey": "/pebble/certs/localhost/key.pem",
+    "certificate": "./pebble/certs/localhost/cert.pem",
+    "privateKey": "./pebble/certs/localhost/key.pem",
     "httpPort": 5002,
     "tlsPort": 5001,
     "ocspResponderURL": "",
     "externalAccountBindingRequired": false,
     "domainBlocklist": ["blocked-domain.example"],
     "retryAfter": {
-        "authz": 3,
-        "order": 5
+      "authz": 3,
+      "order": 5
     },
     "keyAlgorithm": "ecdsa",
     "profiles": {
@@ -26,4 +26,3 @@
     }
   }
 }
-

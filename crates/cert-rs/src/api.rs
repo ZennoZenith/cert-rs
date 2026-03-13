@@ -25,11 +25,11 @@ use crate::{
         UnRegisteredAccount,
     },
     authorization::AuthorizationWithUrl,
+    b64,
     challenge::{Challenge, ChallengeResponder, ChallengeType},
     csr::generate_csr,
     directory::AcmeDirectory,
     order::{Identifier, Order},
-    utils::b64,
 };
 
 #[cfg(debug_assertions)]

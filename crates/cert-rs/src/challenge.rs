@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-use crate::utils::time::TimeRfc3339;
+use crate::time::TimeRfc3339;
 
 #[derive(
     Debug,
