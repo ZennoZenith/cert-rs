@@ -1,8 +1,13 @@
 # rustfmt doc - https://rust-lang.github.io/rustfmt/
 
-tab_spaces = 4
 edition = "2024"
 
-max_width = 80
+max_width = 100
+tab_spaces = 4
+newline_style = "Unix"
+use_field_init_shorthand = true
+reorder_imports = true
+wrap_comments = true
+
 chain_width = 70
 array_width = 70

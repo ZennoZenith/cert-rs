@@ -1,3 +1,12 @@
+#![deny(clippy::all)]
+// #![deny(clippy::unwrap_used)]
+// #![deny(clippy::expect_used)]
+// #![warn(clippy::pedantic)]
+// #![warn(clippy::nursery)]
+// #![warn(clippy::cargo)]
+// #![warn(clippy::complexity)]
+// #![warn(clippy::perf)]
+
 mod api;
 mod authorization;
 mod b64;
