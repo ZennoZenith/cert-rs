@@ -1,10 +1,10 @@
 use http::{
     HeaderMap, HeaderValue,
-    header::{CONTENT_TYPE, USER_AGENT},
+    header::{self, CONTENT_TYPE, USER_AGENT},
 };
 use mime::Mime;
-use reqwest::{Client, IntoUrl, Response};
-use serde::{Deserialize, Deserializer, Serialize};
+use reqwest::{Client, IntoUrl, RequestBuilder, Response};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _};
 use std::{collections::VecDeque, fmt};
 use tokio::sync::Mutex;
 use url::Url;
@@ -39,8 +39,13 @@ pub enum Error {
     #[error("Invalid Mime: {0}")]
     InvalidContentType(Mime),
 
-    #[error("replay-nonce header not found in request")]
-    ReplayNonce,
+    /// Header name does not exist
+    #[error("{0}")]
+    MissingHeaderName(&'static str),
+
+    /// Header value does not exist
+    #[error("{0}")]
+    MissingHeaderValue(&'static str),
 }
 
 /// ```json
@@ -65,29 +70,82 @@ impl fmt::Display for AcmeError {
 }
 
 #[derive(Debug, Clone, strum_macros::Display)]
-// TODO: is this better?
-// #[strum(prefix = "urn:ietf:params:acme:error:")]
+// TODO: add rfc section for all error types
 pub enum AcmeErrorType {
+    /// The request specified an account that does not exist
     AccountDoesNotExist,
+
+    /// The request specified a certificate to be revoked that has already been revoked
     AlreadyRevoked,
+
+    /// The CSR is unacceptable (e.g., due to a short key)
     BadCSR,
+
+    /// The client sent an unacceptable anti- replay nonce
     BadNonce,
+
+    /// The JWS was signed by a public key the server does not support
+    BadPublicKey,
+
+    /// The revocation reason provided is not allowed by the server
+    BadRevocationReason,
+
+    /// The JWS was signed with an algorithm the server does not support
     BadSignatureAlgorithm,
+
+    /// Certification Authority Authorization (CAA) records forbid the CA from issuing a certificate
     Caa,
+
+    /// Specific error conditions are indicated in the "subproblems" array
+    Compound,
+
+    /// The server could not connect to validation target
     Connection,
+
+    /// There was a problem with a DNS query during identifier validation
     Dns,
+
+    /// The request must include a value for the "externalAccountBinding" field
     ExternalAccountRequired,
+
+    /// Response received didn't match the challenge's requirements
     IncorrectResponse,
+
+    /// A contact URL for an account was invalid
     InvalidContact,
+
+    /// The request message was malformed
     Malformed,
+
+    /// The request attempted to finalize an order that is not ready to be finalized
+    OrderNotReady,
+
+    /// The request exceeds a rate limit
     RateLimited,
+
+    /// The server will not issue certificates for the identifier
     RejectedIdentifier,
+
+    /// The server experienced an internal error
     ServerInternal,
+
+    /// The server received a TLS error during validation
     Tls,
+
+    /// The client lacks sufficient authorization
     Unauthorized,
+
+    /// A contact URL for an account used an unsupported protocol scheme
+    UnsupportedContact,
+
+    /// An identifier is of an unsupported type
     UnsupportedIdentifier,
+
+    /// Visit the "instance" URL and take actions specified there
     UserActionRequired,
 
+    /// Variant not defined in [RFC 8555]
+    /// [RFC 8555]: https://www.rfc-editor.org/rfc/rfc8555
     #[strum(serialize = "Unknown({0})")]
     Unknown(Box<str>),
 }
@@ -102,30 +160,43 @@ impl<'de> Deserialize<'de> for AcmeErrorType {
 
         // TODO: add rfc section for all error types
         let err = match name {
-            // "accountDoesNotExist" => Self::AccountDoesNotExist,
-            // "alreadyRevoked" => Self::AlreadyRevoked,
-            // "badCSR" => Self::BadCSR,
-            // "badNonce" => Self::BadNonce,
-            // "badSignatureAlgorithm" => Self::BadSignatureAlgorithm,
-            // "caa" => Self::Caa,
-            // "connection" => Self::Connection,
-            // "dns" => Self::Dns,
-            // "externalAccountRequired" => Self::ExternalAccountRequired,
-            // "incorrectResponse" => Self::IncorrectResponse,
-            // "invalidContact" => Self::InvalidContact,
+            "accountDoesNotExist" => Self::AccountDoesNotExist,
+            "alreadyRevoked" => Self::AlreadyRevoked,
+            "badCSR" => Self::BadCSR,
+            "badNonce" => Self::BadNonce,
+            "badPublicKey" => Self::BadPublicKey,
+            "badRevocationReason" => Self::BadRevocationReason,
+            "badSignatureAlgorithm" => Self::BadSignatureAlgorithm,
+            "caa" => Self::Caa,
+            "compound" => Self::Compound,
+            "connection" => Self::Connection,
+            "dns" => Self::Dns,
+            "externalAccountRequired" => Self::ExternalAccountRequired,
+            "incorrectResponse" => Self::IncorrectResponse,
+            "invalidContact" => Self::InvalidContact,
             "malformed" => Self::Malformed,
-            // "rateLimited" => Self::RateLimited,
-            // "rejectedIdentifier" => Self::RejectedIdentifier,
-            // "serverInternal" => Self::ServerInternal,
-            // "tls" => Self::Tls,
-            // "unauthorized" => Self::Unauthorized,
-            // "unsupportedIdentifier" => Self::UnsupportedIdentifier,
-            // "userActionRequired" => Self::UserActionRequired,
+            "orderNotReady" => Self::OrderNotReady,
+            "rateLimited" => Self::RateLimited,
+            "rejectedIdentifier" => Self::RejectedIdentifier,
+            "serverInternal" => Self::ServerInternal,
+            "tls" => Self::Tls,
+            "unauthorized" => Self::Unauthorized,
+            "unsupportedContact" => Self::UnsupportedContact,
+            "unsupportedIdentifier" => Self::UnsupportedIdentifier,
+            "userActionRequired" => Self::UserActionRequired,
             _ => Self::Unknown(name.into()),
         };
 
         Ok(err)
     }
+}
+
+pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
+    headers
+        .get(header::LOCATION)
+        // TODO: handle error
+        .and_then(|v| v.to_str().unwrap_or_default().parse::<Url>().ok())
+        .ok_or(Error::MissingHeaderName(header::LOCATION.as_str()))
 }
 
 pub fn reqwest_client_builder() -> Result<Client> {
@@ -150,7 +221,7 @@ async fn parse_acme_error(response: Response) -> Result<AcmeError> {
         .map_err(|e| Error::AcmeErrorParse(e.to_string()))
 }
 
-async fn handle_response_error(response: Response) -> Result<Response> {
+pub async fn handle_response_error(response: Response) -> Result<Response> {
     let headers = response.headers();
     // dbg!(headers);
 
@@ -191,17 +262,19 @@ async fn handle_response_error(response: Response) -> Result<Response> {
     Ok(response)
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct GetRequest {
-    pub(crate) url: Url,
-    pub(crate) header: Option<HeaderMap>,
+pub trait RequestBuilderExt {
+    fn add_rfc_headers(self) -> Self;
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct PostRequest {
-    pub(crate) url: Url,
-    pub(crate) header: Option<HeaderMap>,
-    pub(crate) body: String,
+impl RequestBuilderExt for RequestBuilder {
+    fn add_rfc_headers(self) -> Self {
+        // TODO: add rfc section here
+        self.header(USER_AGENT, HeaderValue::from_static("cert-rs 0.1"))
+            .header(
+                CONTENT_TYPE,
+                HeaderValue::from_static("application/jose+json"),
+            )
+    }
 }
 
 pub struct AcmeClient {
@@ -217,30 +290,8 @@ impl AcmeClient {
         }
     }
 
-    pub(crate) async fn get(&self, request: GetRequest) -> Result<Response> {
-        let mut headers = HeaderMap::new();
-
-        // TODO: add rfc section here
-        headers.insert(USER_AGENT, HeaderValue::from_static("cert-rs 0.1"));
-
-        let response = self.reqwest_client.get(request.url).headers(headers).send().await?;
-
-        let success_response = handle_response_error(response).await?;
-
-        Ok(success_response)
-    }
-
-    pub(crate) async fn post(&self, request: PostRequest) -> Result<Response> {
-        let mut headers = HeaderMap::new();
-
-        // TODO: add rfc section here
-        headers.insert(USER_AGENT, HeaderValue::from_static("cert-rs 0.1"));
-
-        let response = self.reqwest_client.get(request.url).headers(headers).send().await?;
-
-        let success_response = handle_response_error(response).await?;
-
-        Ok(success_response)
+    pub const fn client(&self) -> &Client {
+        &self.reqwest_client
     }
 
     fn extract_nonce(headers: &HeaderMap) -> Option<Box<str>> {
@@ -270,18 +321,46 @@ impl AcmeClient {
             return Ok(nonce);
         };
 
-        let response = self.reqwest_client.head(url).send().await?;
+        let response = self.reqwest_client.head(url).add_rfc_headers().send().await?;
+
         let headers = response.headers();
 
-        Self::extract_nonce(headers).ok_or(Error::ReplayNonce)
+        Self::extract_nonce(headers).ok_or(Error::MissingHeaderName("replay-nonce"))
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum AcmeApiBody<T: Serialize + Clone = ()> {
+pub enum AcmeApiBody<T: Serialize = ()> {
     EmptyString,
     EmptyObject,
     Other(T),
+}
+
+impl AcmeApiBody<()> {
+    pub const EMPTY_STRING: Self = Self::EmptyString;
+    pub const EMPTY_OBJECT: Self = Self::EmptyObject;
+}
+
+impl<T> Serialize for AcmeApiBody<T>
+where
+    T: Serialize + Clone,
+{
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // EmptyString   ->  ""
+        // EmptyObject   ->  {}
+        // Other(T)      ->  serialization of T
+        match self {
+            Self::EmptyString => serializer.serialize_str(""),
+            Self::EmptyObject => {
+                let map = serializer.serialize_map(Some(0))?;
+                map.end()
+            }
+            Self::Other(v) => v.serialize(serializer),
+        }
+    }
 }
 
 // region:    --- Tests
@@ -290,9 +369,66 @@ mod tests {
     #![allow(clippy::expect_used)]
 
     use super::*;
+    use serde::Serialize;
 
     fn parse(json: &str) -> AcmeError {
         serde_json::from_str(json).expect("failed to parse acme error")
+    }
+
+    #[test]
+    fn serialize_empty_string() {
+        let body: AcmeApiBody = AcmeApiBody::EmptyString;
+
+        let json =
+            serde_json::to_string(&body).expect("failed to convert acme api body to json string");
+
+        assert_eq!(json, r#""""#);
+    }
+
+    #[test]
+    fn serialize_empty_object() {
+        let body: AcmeApiBody = AcmeApiBody::EmptyObject;
+
+        let json =
+            serde_json::to_string(&body).expect("failed to convert acme api body to json string");
+
+        assert_eq!(json, "{}");
+    }
+
+    #[test]
+    fn serialize_other_struct() {
+        #[derive(Serialize, Clone)]
+        struct Payload {
+            a: u32,
+            b: &'static str,
+        }
+
+        let body = AcmeApiBody::Other(Payload { a: 1, b: "test" });
+
+        let json =
+            serde_json::to_string(&body).expect("failed to convert acme api body to json string");
+
+        assert_eq!(json, r#"{"a":1,"b":"test"}"#);
+    }
+
+    #[test]
+    fn serialize_other_primitive() {
+        let body = AcmeApiBody::Other(42u32);
+
+        let json =
+            serde_json::to_string(&body).expect("failed to convert acme api body to json string");
+
+        assert_eq!(json, "42");
+    }
+
+    #[test]
+    fn serialize_other_array() {
+        let body = AcmeApiBody::Other(vec![1, 2, 3]);
+
+        let json =
+            serde_json::to_string(&body).expect("failed to convert acme api body to json string");
+
+        assert_eq!(json, "[1,2,3]");
     }
 
     #[test]

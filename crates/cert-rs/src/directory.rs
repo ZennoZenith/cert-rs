@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::{
     Error, Result,
-    api::{AcmeClient, GetRequest, reqwest_client_builder},
+    api::{AcmeClient, RequestBuilderExt, handle_response_error},
 };
 
 /// ACME directory object.
@@ -47,15 +47,10 @@ impl Directory {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn new_from_url<T: IntoUrl>(url: T) -> Result<Self> {
-        let url = url.into_url().map_err(|e| Error::Url(e.to_string()))?;
+    pub async fn new_from_url<T: IntoUrl>(acme_client: &AcmeClient, url: T) -> Result<Self> {
+        let response = acme_client.client().get(url).add_rfc_headers().send().await?;
 
-        let reqwest_client = reqwest_client_builder()?;
-
-        let acme_client = AcmeClient::new(reqwest_client);
-
-        let request = GetRequest { url, header: None };
-        let response = acme_client.get(request).await?;
+        let response = handle_response_error(response).await?;
 
         response
             .json()
@@ -66,15 +61,15 @@ impl Directory {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn lets_encrypt() -> Result<Self> {
-        Self::new_from_url(Self::LETS_ENCRYPT_URL).await
+    pub async fn lets_encrypt(acme_client: &AcmeClient) -> Result<Self> {
+        Self::new_from_url(acme_client, Self::LETS_ENCRYPT_URL).await
     }
 
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn lets_encrypt_staging() -> Result<Self> {
-        Self::new_from_url(Self::LETS_ENCRYPT_STAGING_URL).await
+    pub async fn lets_encrypt_staging(acme_client: &AcmeClient) -> Result<Self> {
+        Self::new_from_url(acme_client, Self::LETS_ENCRYPT_STAGING_URL).await
     }
 }
 

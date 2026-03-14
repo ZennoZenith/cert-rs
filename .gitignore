@@ -2,4 +2,4 @@
 .env
 target/
 Cargo.lock
-temp
+temp*

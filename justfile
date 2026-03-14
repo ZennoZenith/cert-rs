@@ -38,7 +38,7 @@ watch-test-specific:
 run-example:
     cargo run --example playground
 
-pebble $PEBBLE_WFE_NONCEREJECT="10":
+pebble:
     ## Pebble will sleep a random number of seconds, Set to 1 to test at full speed
     ## (https://github.com/letsencrypt/pebble?tab=readme-ov-file#testing-at-full-speed)
     # PEBBLE_VA_NOSLEEP: 1
