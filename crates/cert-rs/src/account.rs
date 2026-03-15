@@ -54,7 +54,9 @@ pub enum AccountStatus {
     Revoked,
 }
 
-/// TODO: add docs, RFC: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.1
+/// TODO: add docs, [RFC 8555 §9.7.1]
+///
+/// [RFC 8555 §9.7.1]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.1
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountObject {
@@ -67,10 +69,12 @@ pub struct AccountObject {
     pub(crate) orders: Url,
 }
 
+// TODO: AccountId(Url)
+
 #[derive(Debug, Clone)]
 pub struct Account {
     status: AccountStatus,
-    account_id: Url,
+    id: Url,
     private_key: Rsa<Private>,
 
     /// A Url from which a list of orders submitted by this acocount can be fetched
@@ -103,22 +107,27 @@ pub struct Account {
 // }
 
 impl Account {
+    #[must_use]
     pub const fn status(&self) -> AccountStatus {
         self.status
     }
 
+    #[must_use]
     pub const fn orders(&self) -> &Url {
         &self.orders
     }
 
+    #[must_use]
     pub const fn account_id(&self) -> &Url {
-        &self.account_id
+        &self.id
     }
 
+    #[must_use]
     pub const fn private_key(&self) -> &Rsa<Private> {
         &self.private_key
     }
 
+    #[must_use]
     pub fn jwk_thumbprint(&self) -> &str {
         &self.jwk_thumbprint
     }
@@ -129,9 +138,14 @@ impl Account {
         private_key: Rsa<Private>,
         account_create: AccountCreate,
     ) -> Result<Url> {
+        #[derive(Deserialize)]
+        struct IntermidiateAccount {
+            status: AccountStatus,
+        }
+
         let url = &directory.new_account;
 
-        let public_key = rsa_private_to_rsa_public(private_key.clone())
+        let public_key = rsa_private_to_rsa_public(&private_key)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
 
         let jwk: Jwk = public_key.into();
@@ -161,11 +175,6 @@ impl Account {
 
         // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
         let account_id = extract_location_header(response.headers())?;
-
-        #[derive(Deserialize)]
-        struct IntermidiateAccount {
-            status: AccountStatus,
-        }
 
         let intermediate_account = response
             .json::<IntermidiateAccount>()
@@ -212,7 +221,7 @@ impl Account {
         private_key: Rsa<Private>,
     ) -> Result<Self> {
         let url = account_id;
-        let public_key = rsa_private_to_rsa_public(private_key.clone())
+        let public_key = rsa_private_to_rsa_public(&private_key)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
 
         let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
@@ -245,7 +254,7 @@ impl Account {
 
         Ok(Self {
             status,
-            account_id: account_id.clone(),
+            id: account_id.clone(),
             private_key,
             orders,
             jwk_thumbprint,
@@ -275,4 +284,12 @@ impl Account {
 
         Self::fetch_account(acme_client, directory, &account_id, private_key).await
     }
+
+    // TODO: Account Update
+    //
+    // TODO: External Account Binding
+    //
+    // TODO: Account Key Rollover
+    //
+    // TODO: Account Deactivation
 }

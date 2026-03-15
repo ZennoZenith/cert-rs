@@ -145,6 +145,7 @@ pub enum AcmeErrorType {
     UserActionRequired,
 
     /// Variant not defined in [RFC 8555]
+    ///
     /// [RFC 8555]: https://www.rfc-editor.org/rfc/rfc8555
     #[strum(serialize = "Unknown({0})")]
     Unknown(Box<str>),
@@ -199,6 +200,9 @@ pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
         .ok_or(Error::MissingHeaderName(header::LOCATION.as_str()))
 }
 
+/// # Errors
+///
+/// TODO: Write error docs
 pub fn reqwest_client_builder() -> Result<Client> {
     let client_builder = Client::builder();
 
@@ -283,10 +287,11 @@ pub struct AcmeClient {
 }
 
 impl AcmeClient {
+    #[must_use]
     pub fn new(reqwest_client: reqwest::Client) -> Self {
         Self {
             reqwest_client,
-            nonce_store: Default::default(),
+            nonce_store: Mutex::default(),
         }
     }
 
@@ -298,7 +303,7 @@ impl AcmeClient {
         headers
             .get("replay-nonce")
             .map(|v| v.to_str())
-            .and_then(|v| v.ok())
+            .and_then(std::result::Result::ok)
             .map(Box::from)
     }
 
@@ -313,13 +318,16 @@ impl AcmeClient {
         self.nonce_store.lock().await.push_back(nonce);
     }
 
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub async fn nonce<U: IntoUrl>(&self, url: U) -> Result<Box<str>> {
         // // try get nonce from store
         let value = self.nonce_store.lock().await.pop_front();
 
         if let Some(nonce) = value {
             return Ok(nonce);
-        };
+        }
 
         let response = self.reqwest_client.head(url).add_rfc_headers().send().await?;
 
