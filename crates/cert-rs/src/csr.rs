@@ -3,10 +3,7 @@ use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private},
     stack::Stack,
-    x509::{
-        X509NameBuilder, X509Req, X509ReqBuilder,
-        extension::SubjectAlternativeName,
-    },
+    x509::{X509NameBuilder, X509Req, X509ReqBuilder, extension::SubjectAlternativeName},
 };
 
 ///```sh
@@ -14,10 +11,7 @@ use openssl::{
 ///## subjectAltName = DNS:yoursite.com, DNS:www.yoursite.com
 ///openssl req -new -sha256 -key $domain_private_key_file -subj "/" -addext $subject_alt_name
 ///```
-pub fn generate_csr(
-    domain_private_key: PKey<Private>,
-    domains: &[String],
-) -> Result<X509Req> {
+pub fn generate_csr(domain_private_key: PKey<Private>, domains: &[String]) -> Result<X509Req> {
     // === Build empty subject (equivalent to "-subj /") ===
     let name_builder = X509NameBuilder::new()?;
     // No fields added → empty subject
@@ -69,20 +63,18 @@ mod tests {
 
     use super::*;
 
-    const FIXTURE_DOMAIN_KEY_PEM: &str =
-        include_str!("../../../tests/FIXTURE_DOMAIN_KEY.pem");
+    const FIXTURE_DOMAIN_KEY_PEM: &str = include_str!("../../../tests/FIXTURE_DOMAIN_KEY.pem");
 
-    const FIXTURE_CSR_PEM: &str =
-        include_str!("../../../tests/FIXTURE_CSR.pem");
+    const FIXTURE_CSR_PEM: &str = include_str!("../../../tests/FIXTURE_CSR.pem");
 
     #[test]
     fn csr_ok() -> Result<()> {
-        let domain_private_key =
-            PKey::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM.as_bytes())?;
+        let domain_private_key = PKey::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM.as_bytes())?;
 
         let domains = [String::from("test.com"), String::from("*.test.com")];
 
-        let csr = generate_csr(domain_private_key, &domains).unwrap();
+        #[allow(clippy::expect_used)]
+        let csr = generate_csr(domain_private_key, &domains).expect("Unable to generate csr");
 
         let csr = String::from_utf8(csr.to_pem()?)?;
 
@@ -93,12 +85,12 @@ mod tests {
 
     #[test]
     fn csr_base64_encode_ok() -> Result<()> {
-        let domain_private_key =
-            PKey::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM.as_bytes())?;
+        let domain_private_key = PKey::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM.as_bytes())?;
 
         let domains = [String::from("test.com"), String::from("*.test.com")];
 
-        let csr = generate_csr(domain_private_key, &domains).unwrap();
+        #[allow(clippy::expect_used)]
+        let csr = generate_csr(domain_private_key, &domains).expect("Unable to generate csr");
 
         let csr_der_bytes = csr.to_der()?;
         let csr_der_base64 = b64::b64u_encode(csr_der_bytes);

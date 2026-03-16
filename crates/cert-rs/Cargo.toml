@@ -28,21 +28,11 @@ strip = true
 [dependencies]
 # lib-proxy = { path = "../../libs/lib-proxy" }
 
-tokio.workspace = true
-url.workspace = true
-strum.workspace = true
-strum_macros.workspace = true
-thiserror.workspace = true
-color-eyre.workspace = true
-
 chrono = "0.4"
-reqwest = { version = "0.13", features = ["json"] }
 http = "1"
 mime = "0.3"
 openssl = { version = "0.10", features = ["vendored"] }
 
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
 serde_with = { version = "3" }
 tracing = { version = "0.1", optional = true }
 tracing-subscriber = { version = "0.3", features = [
@@ -51,6 +41,17 @@ tracing-subscriber = { version = "0.3", features = [
 
 base64 = "0.22"
 sha2 = "0.10"
+
+tokio.workspace = true
+url.workspace = true
+strum.workspace = true
+strum_macros.workspace = true
+thiserror.workspace = true
+color-eyre.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+reqwest.workspace = true
+
 
 [dev-dependencies]
 color-eyre = "0.6"

@@ -16,6 +16,9 @@ pub enum Error {
     #[error("{0}")]
     ResponseToText(String),
 
+    #[error("Certificate url not present order")]
+    CertificateUrlNotPresent,
+
     #[error("{0}")]
     Unimplemented(String),
 

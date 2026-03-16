@@ -1,51 +1,43 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use url::Url;
 
-use crate::time::TimeRfc3339;
+use crate::{
+    AcmeClient, Result,
+    account::Account,
+    api::{AcmeApiBody, RequestBuilderExt as _, handle_response_error},
+    authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
+    directory::Directory,
+    time::TimeRfc3339,
+};
+
+// /// ACME clients must ignore unknown challenge types per the spec.
+// ///
+// /// From RFC 8555 Section 7.1.4:
+// ///
+// /// Clients should ignore challenge types they do not recognize.
+// #[derive(
+//     Debug,
+//     Clone,
+//     Copy,
+//     strum_macros::Display,
+//     strum_macros::EnumString,
+//     strum_macros::IntoStaticStr,
+//     PartialEq,
+//     Eq,
+// )]
+// #[non_exhaustive]
+// pub enum ChallengeType {
+//     Http01,
+//     Dns01,
+//     // // TODO: tls-alpn-01 is not defined in RFC 8555
+//     // TlsAlpn01,
+// }
 
 #[derive(
     Debug,
     Clone,
+    Copy,
     Deserialize,
-    Serialize,
-    Default,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
-)]
-#[strum(ascii_case_insensitive)]
-#[strum(serialize_all = "kebab-case")]
-#[serde(rename_all = "kebab-case")]
-#[non_exhaustive]
-pub enum ChallengeType {
-    #[default]
-    #[serde(rename = "http-01")]
-    #[strum(serialize = "http-01")]
-    Http01,
-
-    #[serde(rename = "dns-01")]
-    #[strum(serialize = "dns-01")]
-    Dns01,
-
-    #[serde(rename = "tls-alpn-01")]
-    #[strum(serialize = "tls-alpn-01")]
-    TlsAlpn01,
-
-    #[serde(rename = "dns-account-01")]
-    #[strum(serialize = "dns-account-01")]
-    DnsAccount01,
-
-    #[serde(untagged)]
-    Unknown(String),
-}
-
-#[derive(
-    Debug,
-    Clone,
-    Deserialize,
-    Serialize,
     Default,
     strum_macros::Display,
     strum_macros::EnumString,
@@ -65,29 +57,126 @@ pub enum ChallengeStatus {
     Invaid,
 }
 
+/// basic field
+///
+/// All additional fields are specified by the challenge type.
 #[derive(Debug, Clone, Deserialize)]
-pub struct Challenge {
-    pub r#type: ChallengeType,
+pub struct ChallengeBase {
     pub url: Url,
     pub status: ChallengeStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub validated: Option<TimeRfc3339>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    // TODO: Error object
     pub error: Option<serde_json::Value>,
-
-    /// Specific to challenge type
-    pub token: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct ChallengeResponder {
-    pub domain: String,
-    pub r#type: ChallengeType,
-    pub token: String,
-    /// {token}.{jwk_thumbprint}, used of http-01 challange
-    pub keyauth: String,
-    /// keyauth -> sha256 -> bash64url, used of dns-01 challange
-    pub sha_256_keyauth: String,
-    pub challange_response_url: Url,
-    pub authorization_url: Url,
+#[derive(Debug, Clone, Deserialize)]
+pub struct Http01Challenge {
+    #[serde(flatten)]
+    pub base: ChallengeBase,
+
+    pub token: Box<str>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct Dns01Challenge {
+    #[serde(flatten)]
+    pub base: ChallengeBase,
+
+    pub token: Box<str>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TlsAlpn01Challenge {
+    #[serde(flatten)]
+    pub base: ChallengeBase,
+    // pub token: Box<str>,
+}
+
+/// ACME clients must ignore unknown challenge types per the spec.
+///
+/// From RFC 8555 Section 7.1.4:
+///
+/// Clients should ignore challenge types they do not recognize.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "type")]
+pub enum KnownChallenge {
+    #[serde(rename = "http-01")]
+    Http01(Http01Challenge),
+
+    #[serde(rename = "dns-01")]
+    Dns01(Dns01Challenge),
+    // // TODO: tls-alpn-01 is not defined in RFC 8555
+    // #[serde(rename = "tls-alpn-01")]
+    // TlsAlpn01(TlsAlpn01Challenge),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct UnknownChallenge {
+    #[serde(rename = "type")]
+    pub type_: Box<str>,
+
+    #[serde(flatten)]
+    pub extra: serde_json::Value,
+}
+
+/// [RFC 8555 section 8]: https://www.rfc-editor.org/rfc/rfc8555#section-8
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+pub enum Challenge {
+    Known(KnownChallenge),
+    Unknown(UnknownChallenge),
+}
+
+impl Challenge {
+    pub const fn is_supported(&self) -> bool {
+        matches!(self, Self::Known { .. })
+    }
+}
+
+impl KnownChallenge {
+    pub const fn base(&self) -> &ChallengeBase {
+        match self {
+            Self::Http01(Http01Challenge { base, .. }) => base,
+            Self::Dns01(Dns01Challenge { base, .. }) => base,
+        }
+    }
+
+    /// Retruns Option because later new challenge type might not have token field
+    pub const fn token(&self) -> Option<&str> {
+        match self {
+            Self::Http01(Http01Challenge { token, .. }) => Some(token),
+            Self::Dns01(Dns01Challenge { token, .. }) => Some(token),
+        }
+    }
+
+    pub async fn respond(
+        acme_client: &AcmeClient,
+        directory: &Directory,
+        account: &Account,
+        url: Url,
+    ) -> Result<Self> {
+        let url = &url;
+
+        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let jws_protected_headers = JwsProtectedHeaders {
+            algorithm: JwsAlgorithm::RS256,
+            url,
+            auth: JwkOrKid::Kid(account.account_id().clone()),
+            nonce,
+        };
+        let body = AcmeApiBody::EMPTY_OBJECT;
+        let jws = Jws::new(account.private_key().clone(), jws_protected_headers, body);
+
+        let response = acme_client
+            .client()
+            .post(url.to_owned())
+            .add_rfc_headers()
+            .json(&jws)
+            .send()
+            .await?;
+
+        let response = handle_response_error(response).await?;
+        let challenge = response.json::<Self>().await?;
+        Ok(challenge)
+    }
 }

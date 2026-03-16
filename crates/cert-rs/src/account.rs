@@ -59,14 +59,14 @@ pub enum AccountStatus {
 /// [RFC 8555 §9.7.1]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.1
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountObject {
-    pub(crate) status: AccountStatus,
-    pub(crate) contact: Option<Vec<String>>,
-    pub(crate) terms_of_service_agreed: Option<bool>,
+struct AccountObject {
+    status: AccountStatus,
+    contact: Option<Vec<String>>,
+    terms_of_service_agreed: Option<bool>,
     // TODO: external_account_binding object type
-    pub(crate) external_account_binding: Option<serde_json::Value>,
+    external_account_binding: Option<serde_json::Value>,
     /// A Url from which a list of orders submitted by this acocount can be fetched
-    pub(crate) orders: Url,
+    orders: Url,
 }
 
 // TODO: AccountId(Url)

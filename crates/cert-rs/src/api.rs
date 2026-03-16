@@ -249,6 +249,7 @@ pub async fn handle_response_error(response: Response) -> Result<Response> {
 
     match (mime.type_(), mime.subtype()) {
         (mime::APPLICATION, mime::JSON) => (),
+        (mime::APPLICATION, name) if name.as_str() == "pem-certificate-chain" => (),
         // (mime::TEXT, mime::HTML) => println!("HTML"),
         // (mime::TEXT, mime::PLAIN) => println!("HTML"),
         _ => return Err(Error::InvalidContentType(mime)),

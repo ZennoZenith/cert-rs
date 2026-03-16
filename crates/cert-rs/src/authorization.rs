@@ -1,4 +1,13 @@
-use serde::{Deserialize, Serialize};
+use crate::{
+    AcmeClient, Result,
+    account::Account,
+    api::{AcmeApiBody, RequestBuilderExt as _, handle_response_error},
+    authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
+    b64,
+    directory::Directory,
+};
+use serde::Deserialize;
+use sha2::{Digest as _, Sha256};
 use url::Url;
 
 use crate::{challenge::Challenge, order::Identifier, time::TimeRfc3339};
@@ -6,8 +15,8 @@ use crate::{challenge::Challenge, order::Identifier, time::TimeRfc3339};
 #[derive(
     Debug,
     Clone,
+    Copy,
     Deserialize,
-    Serialize,
     Default,
     strum_macros::Display,
     strum_macros::EnumString,
@@ -16,7 +25,6 @@ use crate::{challenge::Challenge, order::Identifier, time::TimeRfc3339};
     Eq,
 )]
 #[strum(ascii_case_insensitive)]
-#[strum(serialize_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum AuthorizationStatus {
@@ -29,20 +37,58 @@ pub enum AuthorizationStatus {
     Revoked,
 }
 
+/// Authorization Objects
+///
+/// Defined in [RFC 8555 §7.1.4].
+///
+/// [RFC 8555 §7.1.4]: https://www.rfc-editor.org/rfc/rfc8555#section-7.1.4
 #[derive(Debug, Clone, Deserialize)]
 pub struct Authorization {
     pub status: AuthorizationStatus,
     pub identifier: Identifier,
     pub challenges: Vec<Challenge>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub expires: Option<TimeRfc3339>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub wildcard: Option<bool>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-pub struct AuthorizationWithUrl {
-    pub url: Url,
-    pub authorization: Authorization,
+impl Authorization {
+    pub async fn get(
+        acme_client: &AcmeClient,
+        directory: &Directory,
+        account: &Account,
+        url: &Url,
+    ) -> Result<Self> {
+        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let jws_protected_headers = JwsProtectedHeaders {
+            algorithm: JwsAlgorithm::RS256,
+            url,
+            auth: JwkOrKid::Kid(account.account_id().clone()),
+            nonce,
+        };
+        let body = AcmeApiBody::EMPTY_STRING;
+        let jws = Jws::new(account.private_key().clone(), jws_protected_headers, body);
+
+        let response = acme_client
+            .client()
+            .post(url.to_owned())
+            .add_rfc_headers()
+            .json(&jws)
+            .send()
+            .await?;
+
+        let response = handle_response_error(response).await?;
+        let authorization = response.json::<Self>().await?;
+        Ok(authorization)
+    }
+
+    pub fn gen_keyauth(&self, challenge_token: &str, jwk_thumbprint: &str) -> String {
+        format!("{}.{}", challenge_token, jwk_thumbprint)
+    }
+
+    pub fn gen_sha_256_keyauth(&self, challenge_token: &str, jwk_thumbprint: &str) -> String {
+        let keyauth = self.gen_keyauth(challenge_token, jwk_thumbprint);
+        let hash = Sha256::digest(&keyauth).to_vec();
+
+        b64::b64u_encode(hash)
+    }
 }
