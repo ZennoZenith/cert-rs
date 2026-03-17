@@ -123,22 +123,94 @@ impl serde::Serialize for TimeRfc3339 {
 
 #[cfg(test)]
 mod tests {
-    pub type Result<T> = std::result::Result<T, Error>;
-    pub type Error = Box<dyn std::error::Error>; // For tests.
+    #![allow(clippy::unwrap_used)]
 
     use super::*;
+    use chrono::{Duration, TimeZone, Utc};
+    use std::str::FromStr;
 
     #[test]
-    fn vaild_rfc3339_string() -> Result<()> {
-        // -- Setup & Fixtures
+    fn vaild_rfc3339_string() {
         const TIME: &str = "2020-09-08T13:10:08.511Z";
 
-        // -- Exec
-        let _ = TimeRfc3339::try_from(TIME)?;
+        assert!(TimeRfc3339::try_from(TIME).is_ok());
+    }
 
-        // -- Check
+    #[test]
+    fn parse_valid_rfc3339() {
+        let s = "2024-01-01T12:00:00Z";
+        let t = TimeRfc3339::parse_utc(s).unwrap();
+        assert_eq!(t.format_time(), "2024-01-01T12:00:00+00:00");
+    }
 
-        Ok(())
+    #[test]
+    fn parse_invalid_rfc3339() {
+        let s = "not-a-time";
+        assert!(TimeRfc3339::parse_utc(s).is_err());
+    }
+
+    #[test]
+    fn from_str_works() {
+        let s = "2024-01-01T12:00:00Z";
+        let t = TimeRfc3339::from_str(s).unwrap();
+        assert_eq!(t.format_time(), "2024-01-01T12:00:00+00:00");
+    }
+
+    #[test]
+    fn try_from_str() {
+        let s = "2024-01-01T12:00:00Z";
+        let t = TimeRfc3339::try_from(s).unwrap();
+        assert_eq!(t.format_time(), "2024-01-01T12:00:00+00:00");
+    }
+
+    #[test]
+    fn from_datetime() {
+        let dt = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
+        let t: TimeRfc3339 = dt.into();
+        assert_eq!(t.inner(), dt);
+    }
+
+    #[test]
+    fn deref_works() {
+        let dt = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
+        let t: TimeRfc3339 = dt.into();
+
+        // Deref should give access to DateTime<Utc>
+        assert_eq!(t.timestamp(), dt.timestamp());
+    }
+
+    #[test]
+    fn format_time() {
+        let dt = Utc.with_ymd_and_hms(2024, 5, 10, 8, 30, 0).unwrap();
+        let t: TimeRfc3339 = dt.into();
+        assert_eq!(t.format_time(), "2024-05-10T08:30:00+00:00");
+    }
+
+    #[test]
+    fn now_utc_plus_sec_str_future() {
+        let res = TimeRfc3339::now_utc_plus_sec_str(Duration::seconds(60));
+        assert!(res.is_ok());
+
+        let parsed = TimeRfc3339::parse_utc(&res.unwrap());
+        assert!(parsed.is_ok());
+    }
+
+    #[test]
+    fn serde_roundtrip() {
+        let dt = Utc.with_ymd_and_hms(2024, 1, 1, 12, 0, 0).unwrap();
+        let t: TimeRfc3339 = dt.into();
+
+        let json = serde_json::to_string(&t).unwrap();
+        let back: TimeRfc3339 = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(t, back);
+    }
+
+    #[test]
+    fn serde_invalid_format() {
+        let json = "\"invalid-time\"";
+        let res: Result<TimeRfc3339, _> = serde_json::from_str(json);
+        assert!(res.is_err());
     }
 }
 // endregion: --- Tests
