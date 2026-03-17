@@ -72,12 +72,57 @@ struct AccountObject {
     orders: Url,
 }
 
-// TODO: AccountId(Url)
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(transparent)]
+pub struct AccountId(Url);
+
+impl AccountId {
+    #[must_use]
+    pub const fn new(url: Url) -> Self {
+        Self(url)
+    }
+
+    #[must_use]
+    pub const fn as_url(&self) -> &Url {
+        &self.0
+    }
+
+    #[must_use]
+    pub fn into_inner(self) -> Url {
+        self.0
+    }
+}
+
+impl From<Url> for AccountId {
+    fn from(url: Url) -> Self {
+        Self(url)
+    }
+}
+
+impl From<AccountId> for Url {
+    fn from(id: AccountId) -> Self {
+        id.0
+    }
+}
+
+impl std::ops::Deref for AccountId {
+    type Target = Url;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<Url> for AccountId {
+    fn as_ref(&self) -> &Url {
+        &self.0
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Account {
     status: AccountStatus,
-    id: Url,
+    id: AccountId,
     private_key: Rsa<Private>,
 
     /// A Url from which a list of orders submitted by this acocount can be fetched
@@ -86,28 +131,6 @@ pub struct Account {
     /// jwk -> to json -> sha256 hash -> base64url
     jwk_thumbprint: JwkThumbprint,
 }
-
-// impl Account {
-//     pub fn new(account_id: Url, private_key: Rsa<Private>) -> Result<Self> {
-//         let public_key_pem = private_key.public_key_to_pem().map_err(|_| {
-//             Error::Unimplemented(
-//                 "Unable to convert rsa private key to public_key_pem format".into(),
-//             )
-//         })?;
-//         let public_key = Rsa::public_key_from_pem(&public_key_pem).map_err(|_| {
-//             Error::Unimplemented("Unable to convert public_key_pem to public_key".into())
-//         })?;
-
-//         let jwk_thumbprint = public_key.into();
-
-//         Ok(Self {
-//             account_id,
-//             private_key,
-//             jwk_thumbprint,
-//         })
-//     }
-
-// }
 
 impl Account {
     #[must_use]
@@ -121,7 +144,7 @@ impl Account {
     }
 
     #[must_use]
-    pub const fn account_id(&self) -> &Url {
+    pub fn account_id(&self) -> &Url {
         &self.id
     }
 
@@ -140,7 +163,7 @@ impl Account {
         directory: &Directory,
         private_key: Rsa<Private>,
         account_create: AccountCreate,
-    ) -> Result<Url> {
+    ) -> Result<AccountId> {
         #[derive(Deserialize)]
         struct IntermidiateAccount {
             status: AccountStatus,
@@ -177,7 +200,7 @@ impl Account {
         let response = handle_response_error(response).await?;
 
         // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
-        let account_id = extract_location_header(response.headers())?;
+        let account_id = extract_location_header(response.headers()).map(Into::into)?;
 
         let intermediate_account = response
             .json::<IntermidiateAccount>()
@@ -220,10 +243,10 @@ impl Account {
     pub async fn fetch_account(
         acme_client: &AcmeClient,
         directory: &Directory,
-        account_id: &Url,
+        account_id: &AccountId,
         private_key: Rsa<Private>,
     ) -> Result<Self> {
-        let url = account_id;
+        let url: &Url = account_id;
         let public_key = rsa_private_to_rsa_public(&private_key)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
 
@@ -239,7 +262,7 @@ impl Account {
 
         let response = acme_client
             .client()
-            .post(account_id.clone())
+            .post(account_id.as_url().clone())
             .add_rfc_headers()
             .json(&jws)
             .send()
