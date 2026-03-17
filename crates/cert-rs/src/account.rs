@@ -55,17 +55,24 @@ pub enum AccountStatus {
 /// TODO: add docs, [RFC 8555 §9.7.1]
 ///
 /// [RFC 8555 §9.7.1]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.1
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct AccountObject {
     status: AccountStatus,
+
     #[allow(dead_code)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     contact: Option<Vec<String>>,
+
     #[allow(dead_code)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     terms_of_service_agreed: Option<bool>,
+
     // TODO: external_account_binding object type
     #[allow(dead_code)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     external_account_binding: Option<serde_json::Value>,
+
     /// A Url from which a list of orders submitted by this acocount can be fetched
     orders: Url,
 }

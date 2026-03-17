@@ -74,7 +74,7 @@ pub enum OrderStatus {
 /// TODO: add docs, [RFC 8555 §9.7.2]
 ///
 /// [RFC 8555 §9.7.1]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.2
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Order {
     pub status: OrderStatus,

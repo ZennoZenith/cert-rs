@@ -54,7 +54,7 @@ pub enum Error {
 ///    "status": 400
 /// }
 /// ```
-#[derive(Debug, Clone, Deserialize, thiserror::Error)]
+#[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
 pub struct AcmeError {
     #[serde(rename = "type")]
     type_: AcmeErrorType,
@@ -68,7 +68,7 @@ impl fmt::Display for AcmeError {
     }
 }
 
-#[derive(Debug, Clone, strum_macros::Display)]
+#[derive(Debug, Clone, Serialize, strum_macros::Display)]
 // TODO: add rfc section for all error types
 pub enum AcmeErrorType {
     /// The request specified an account that does not exist

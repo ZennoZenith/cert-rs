@@ -1,4 +1,4 @@
-- features: `Deserialize`
+- Gen Jws Function
 - Write documentation from RFC8555
 - Handle nonce error
 - [Your client should offer a runtime option to specify a list of trusted root CAs.](https://github.com/letsencrypt/pebble?tab=readme-ov-file#avoiding-client-https-errors)

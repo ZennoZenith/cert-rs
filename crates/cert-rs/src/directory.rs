@@ -1,5 +1,5 @@
 use reqwest::IntoUrl;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
 /// Defined in [RFC 8555 §7.1.1].
 ///
 /// [RFC 8555 §7.1.1]: https://www.rfc-editor.org/rfc/rfc8555#section-7.1.1
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Directory {
     pub(crate) new_nonce: Url,
@@ -30,7 +30,7 @@ pub struct Directory {
 /// Defined in [RFC 8555 §9.7.6].
 ///
 /// [RFC 8555 §9.7.6]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.6
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryMeta {
     pub(crate) terms_of_service: Option<String>,

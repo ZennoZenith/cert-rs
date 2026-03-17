@@ -5,7 +5,7 @@ use crate::{
     authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
     b64,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use url::Url;
 
@@ -15,6 +15,7 @@ use crate::{challenge::Challenge, order::Identifier, time::TimeRfc3339};
     Debug,
     Clone,
     Copy,
+    Serialize,
     Deserialize,
     Default,
     strum_macros::Display,
@@ -41,7 +42,7 @@ pub enum AuthorizationStatus {
 /// Defined in [RFC 8555 §7.1.4].
 ///
 /// [RFC 8555 §7.1.4]: https://www.rfc-editor.org/rfc/rfc8555#section-7.1.4
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Authorization {
     pub status: AuthorizationStatus,
     pub identifier: Identifier,

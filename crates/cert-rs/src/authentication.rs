@@ -22,8 +22,8 @@ pub fn rsa_private_to_rsa_public(
     Rsa::public_key_from_pem(&public_key_pem)
 }
 
-#[derive(Debug)]
-pub struct Base64uEncoded<T: Serialize>(T);
+#[derive(Debug, Serialize)]
+pub struct Base64uEncoded<T>(T);
 
 #[derive(Debug)]
 pub struct Jws<'a, T: Serialize + Clone> {

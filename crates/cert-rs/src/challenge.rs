@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
@@ -37,6 +37,7 @@ use crate::{
     Clone,
     Copy,
     Deserialize,
+    Serialize,
     Default,
     strum_macros::Display,
     strum_macros::EnumString,
@@ -59,7 +60,7 @@ pub enum ChallengeStatus {
 /// basic field
 ///
 /// All additional fields are specified by the challenge type.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ChallengeBase {
     pub url: Url,
     pub status: ChallengeStatus,
@@ -68,7 +69,7 @@ pub struct ChallengeBase {
     pub error: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Http01Challenge {
     #[serde(flatten)]
     pub base: ChallengeBase,
@@ -76,7 +77,7 @@ pub struct Http01Challenge {
     pub token: Box<str>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dns01Challenge {
     #[serde(flatten)]
     pub base: ChallengeBase,
@@ -96,7 +97,7 @@ pub struct TlsAlpn01Challenge {
 /// From RFC 8555 Section 7.1.4:
 ///
 /// Clients should ignore challenge types they do not recognize.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum KnownChallenge {
     #[serde(rename = "http-01")]
@@ -109,7 +110,7 @@ pub enum KnownChallenge {
     // TlsAlpn01(TlsAlpn01Challenge),
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct UnknownChallenge {
     #[serde(rename = "type")]
     pub type_: Box<str>,
@@ -119,7 +120,7 @@ pub struct UnknownChallenge {
 }
 
 /// [RFC 8555 section 8]: https://www.rfc-editor.org/rfc/rfc8555#section-8
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Challenge {
     Known(KnownChallenge),
