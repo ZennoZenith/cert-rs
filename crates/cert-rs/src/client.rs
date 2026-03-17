@@ -8,6 +8,8 @@ use crate::{
     directory::Directory,
 };
 
+const MAX_NONCE_STORE_CAPACITY: usize = 100;
+
 pub struct AcmeClient {
     reqwest_client: reqwest::Client,
     directory: Directory,
@@ -20,7 +22,7 @@ impl AcmeClient {
         Self {
             reqwest_client,
             directory,
-            nonce_store: Mutex::default(),
+            nonce_store: Mutex::new(VecDeque::with_capacity(MAX_NONCE_STORE_CAPACITY)),
         }
     }
 
@@ -50,7 +52,12 @@ impl AcmeClient {
             return;
         };
 
-        // TODO: Limit store length
+        let nonce_store_len = { self.nonce_store.lock().await.len() };
+        if nonce_store_len >= MAX_NONCE_STORE_CAPACITY {
+            // Remove oldest nonce
+            self.nonce_store.lock().await.pop_front();
+        }
+
         self.nonce_store.lock().await.push_back(nonce);
     }
 
