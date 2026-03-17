@@ -65,15 +65,9 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     print_banner();
 
-    let client_builder = Client::builder();
-
-    let client_builder = if config.insecure {
-        client_builder.danger_accept_invalid_certs(true)
-    } else {
-        client_builder
-    };
-
-    let client = client_builder.build()?;
+    let client = Client::builder()
+        .danger_accept_invalid_certs(config.insecure)
+        .build()?;
 
     let directory = match config.url {
         Some(url) => Directory::new_from_url_with_client(&client, url).await?,
@@ -132,7 +126,6 @@ async fn main() -> color_eyre::eyre::Result<()> {
             handle_dns_01_challenge(domain, &sha_256_keyauth).await?;
         } else {
             let keyauth = authorization.gen_keyauth(token, account.jwk_thumbprint());
-            // let keyauth = authorization.gen_keyauth("wrong-token", account.jwk_thumbprint());
             handle_http_01_challenge(token, &keyauth).await?;
         }
 
