@@ -4,7 +4,6 @@ use crate::{
     api::{AcmeApiBody, RequestBuilderExt as _, handle_response_error},
     authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
     b64,
-    directory::Directory,
 };
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
@@ -55,13 +54,8 @@ impl Authorization {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn get(
-        acme_client: &AcmeClient,
-        directory: &Directory,
-        account: &Account,
-        url: &Url,
-    ) -> Result<Self> {
-        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+    pub async fn get(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
+        let nonce = &acme_client.nonce().await?;
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,

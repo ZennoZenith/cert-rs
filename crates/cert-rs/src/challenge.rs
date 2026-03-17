@@ -6,7 +6,6 @@ use crate::{
     account::Account,
     api::{AcmeApiBody, RequestBuilderExt as _, handle_response_error},
     authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
-    directory::Directory,
     time::TimeRfc3339,
 };
 
@@ -155,15 +154,10 @@ impl KnownChallenge {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn respond(
-        acme_client: &AcmeClient,
-        directory: &Directory,
-        account: &Account,
-        url: Url,
-    ) -> Result<Self> {
+    pub async fn respond(acme_client: &AcmeClient, account: &Account, url: Url) -> Result<Self> {
         let url = &url;
 
-        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let nonce = &acme_client.nonce().await?;
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,

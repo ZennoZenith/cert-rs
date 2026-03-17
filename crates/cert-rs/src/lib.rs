@@ -10,6 +10,7 @@
 
 mod api;
 mod b64;
+mod client;
 mod csr;
 mod error;
 mod time;
@@ -21,6 +22,6 @@ pub mod challenge;
 pub mod directory;
 pub mod order;
 
-pub use api::{AcmeClient, AcmeError, AcmeErrorType, reqwest_client_builder};
-
+pub use api::{AcmeError, AcmeErrorType};
+pub use client::AcmeClient;
 pub use error::{Error, Result};

@@ -1,12 +1,11 @@
 use http::{
     HeaderMap, HeaderValue,
-    header::{self, CONTENT_TYPE, USER_AGENT},
+    header::{CONTENT_TYPE, LOCATION, USER_AGENT},
 };
 use mime::Mime;
-use reqwest::{Client, IntoUrl, RequestBuilder, Response};
+use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _};
-use std::{collections::VecDeque, fmt};
-use tokio::sync::Mutex;
+use std::fmt;
 use url::Url;
 
 const ACME_PREFIX: &str = "urn:ietf:params:acme:error:";
@@ -194,28 +193,10 @@ impl<'de> Deserialize<'de> for AcmeErrorType {
 
 pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
     headers
-        .get(header::LOCATION)
+        .get(LOCATION)
         // TODO: handle error
         .and_then(|v| v.to_str().unwrap_or_default().parse::<Url>().ok())
-        .ok_or(Error::MissingHeaderName(header::LOCATION.as_str()))
-}
-
-/// # Errors
-///
-/// TODO: Write error docs
-pub fn reqwest_client_builder() -> Result<Client> {
-    let client_builder = Client::builder();
-
-    let danger_accept_invalid_certs: bool = std::env::var("DANGER_ACCEPT_INVALID_CERTS")
-        .is_ok_and(|v| v.to_lowercase() == "true" || v.parse::<u8>().unwrap_or(0) == 1);
-
-    let client_builder = if danger_accept_invalid_certs {
-        client_builder.danger_accept_invalid_certs(true)
-    } else {
-        client_builder
-    };
-
-    Ok(client_builder.build()?)
+        .ok_or(Error::MissingHeaderName(LOCATION.as_str()))
 }
 
 async fn parse_acme_error(response: Response) -> Result<AcmeError> {
@@ -279,62 +260,6 @@ impl RequestBuilderExt for RequestBuilder {
                 CONTENT_TYPE,
                 HeaderValue::from_static("application/jose+json"),
             )
-    }
-}
-
-pub struct AcmeClient {
-    reqwest_client: reqwest::Client,
-    nonce_store: Mutex<VecDeque<Box<str>>>,
-}
-
-impl AcmeClient {
-    #[must_use]
-    pub fn new(reqwest_client: reqwest::Client) -> Self {
-        Self {
-            reqwest_client,
-            nonce_store: Mutex::default(),
-        }
-    }
-
-    pub const fn client(&self) -> &Client {
-        &self.reqwest_client
-    }
-
-    fn extract_nonce(headers: &HeaderMap) -> Option<Box<str>> {
-        headers
-            .get("replay-nonce")
-            .map(|v| v.to_str())
-            .and_then(std::result::Result::ok)
-            .map(Box::from)
-    }
-
-    pub async fn enqueue_nonce(&self, headers: &HeaderMap) {
-        let Some(nonce) = Self::extract_nonce(headers) else {
-            #[cfg(feature = "tracing")]
-            tracing::warn!("replay-nonce header not found in request");
-
-            return;
-        };
-
-        self.nonce_store.lock().await.push_back(nonce);
-    }
-
-    /// # Errors
-    ///
-    /// TODO: Write error docs
-    pub async fn nonce<U: IntoUrl>(&self, url: U) -> Result<Box<str>> {
-        // // try get nonce from store
-        let value = self.nonce_store.lock().await.pop_front();
-
-        if let Some(nonce) = value {
-            return Ok(nonce);
-        }
-
-        let response = self.reqwest_client.head(url).add_rfc_headers().send().await?;
-
-        let headers = response.headers();
-
-        Self::extract_nonce(headers).ok_or(Error::MissingHeaderName("replay-nonce"))
     }
 }
 

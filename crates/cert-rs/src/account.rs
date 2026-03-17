@@ -5,15 +5,12 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    Error, Result,
-    api::{
-        AcmeApiBody, AcmeClient, RequestBuilderExt, extract_location_header, handle_response_error,
-    },
+    AcmeClient, Error, Result,
+    api::{AcmeApiBody, RequestBuilderExt, extract_location_header, handle_response_error},
     authentication::{
         Jwk, JwkOrKid, JwkThumbprint, Jws, JwsAlgorithm, JwsProtectedHeaders,
         rsa_private_to_rsa_public,
     },
-    directory::Directory,
 };
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -191,7 +188,6 @@ impl Account {
 
     async fn fetch_of_create_account_id(
         acme_client: &AcmeClient,
-        directory: &Directory,
         private_key: Rsa<Private>,
         account_create: AccountCreate,
     ) -> Result<AccountId> {
@@ -200,14 +196,14 @@ impl Account {
             status: AccountStatus,
         }
 
-        let url = &directory.new_account;
+        let url = &acme_client.directory().new_account;
 
         let public_key = rsa_private_to_rsa_public(&private_key)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
 
         let jwk: Jwk = public_key.into();
 
-        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let nonce = &acme_client.nonce().await?;
 
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
@@ -250,22 +246,14 @@ impl Account {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn create(
-        acme_client: &AcmeClient,
-        directory: &Directory,
-        account_create: AccountCreate,
-    ) -> Result<Self> {
+    pub async fn create(acme_client: &AcmeClient, account_create: AccountCreate) -> Result<Self> {
         let private_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
 
-        let account_id = Self::fetch_of_create_account_id(
-            acme_client,
-            directory,
-            private_key.clone(),
-            account_create,
-        )
-        .await?;
+        let account_id =
+            Self::fetch_of_create_account_id(acme_client, private_key.clone(), account_create)
+                .await?;
 
-        Self::fetch_account(acme_client, directory, &account_id, private_key).await
+        Self::fetch_account(acme_client, &account_id, private_key).await
     }
 
     /// # Errors
@@ -273,7 +261,6 @@ impl Account {
     /// TODO: Write error docs
     pub async fn fetch_account(
         acme_client: &AcmeClient,
-        directory: &Directory,
         account_id: &AccountId,
         private_key: Rsa<Private>,
     ) -> Result<Self> {
@@ -281,7 +268,7 @@ impl Account {
         let public_key = rsa_private_to_rsa_public(&private_key)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
 
-        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let nonce = &acme_client.nonce().await?;
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,
@@ -323,7 +310,6 @@ impl Account {
     /// TODO: Write error docs
     pub async fn fetch_account_with_private_key(
         acme_client: &AcmeClient,
-        directory: &Directory,
         private_key: Rsa<Private>,
     ) -> Result<Self> {
         let account_create = AccountCreate {
@@ -331,15 +317,11 @@ impl Account {
             ..Default::default()
         };
 
-        let account_id = Self::fetch_of_create_account_id(
-            acme_client,
-            directory,
-            private_key.clone(),
-            account_create,
-        )
-        .await?;
+        let account_id =
+            Self::fetch_of_create_account_id(acme_client, private_key.clone(), account_create)
+                .await?;
 
-        Self::fetch_account(acme_client, directory, &account_id, private_key).await
+        Self::fetch_account(acme_client, &account_id, private_key).await
     }
 
     // TODO: Account Update

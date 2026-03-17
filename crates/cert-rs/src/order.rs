@@ -4,7 +4,6 @@ use crate::{
     api::{AcmeApiBody, RequestBuilderExt as _, extract_location_header, handle_response_error},
     authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
     b64, csr,
-    directory::Directory,
     time::TimeRfc3339,
 };
 
@@ -100,15 +99,14 @@ impl Order {
     /// TODO: Write error docs
     pub async fn create(
         acme_client: &AcmeClient,
-        directory: &Directory,
         account: &Account,
         domains: Vec<String>,
     ) -> Result<(Url, Self)> {
-        let url = &directory.new_order;
+        let url = &acme_client.directory().new_order;
 
         let identifiers: Vec<Identifier> = domains.iter().map(Into::into).collect();
 
-        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let nonce = &acme_client.nonce().await?;
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,
@@ -138,12 +136,11 @@ impl Order {
     /// TODO: Write error docs
     pub async fn status(
         acme_client: &AcmeClient,
-        directory: &Directory,
         account: &Account,
         order_url: &Url,
     ) -> Result<Self> {
         let url = order_url;
-        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let nonce = &acme_client.nonce().await?;
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,
@@ -173,12 +170,7 @@ impl Order {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn finalize(
-        &self,
-        acme_client: &AcmeClient,
-        directory: &Directory,
-        account: &Account,
-    ) -> Result<X509Req> {
+    pub async fn finalize(&self, acme_client: &AcmeClient, account: &Account) -> Result<X509Req> {
         let domain_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
         let domain_private_key =
             PKey::from_rsa(domain_key).map_err(|e| Error::Unimplemented(e.to_string()))?;
@@ -190,7 +182,7 @@ impl Order {
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
 
         let url = &self.finalize;
-        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let nonce = &acme_client.nonce().await?;
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,
@@ -222,14 +214,13 @@ impl Order {
     pub async fn download_cert(
         &self,
         acme_client: &AcmeClient,
-        directory: &Directory,
         account: &Account,
     ) -> Result<String> {
         let Some(url) = &self.certificate else {
             return Err(Error::CertificateUrlNotPresent);
         };
 
-        let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
+        let nonce = &acme_client.nonce().await?;
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,
