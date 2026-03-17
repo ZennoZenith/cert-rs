@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::{
     Error, Result,
-    api::{RequestBuilderExt, handle_response_error},
+    api::{RequestBuilderExt, ResponseExt as _},
 };
 
 /// ACME directory object.
@@ -50,9 +50,13 @@ impl Directory {
         client: &reqwest::Client,
         url: T,
     ) -> Result<Self> {
-        let response = client.get(url).add_rfc_headers().send().await?;
-
-        let response = handle_response_error(response).await?;
+        let response = client
+            .get(url)
+            .add_rfc_headers()
+            .send()
+            .await?
+            .handle_response_error()
+            .await?;
 
         response
             .json()
@@ -64,9 +68,13 @@ impl Directory {
     ///
     /// TODO: Write error docs
     pub async fn new_from_url<T: IntoUrl>(url: T) -> Result<Self> {
-        let response = reqwest::Client::new().get(url).add_rfc_headers().send().await?;
-
-        let response = handle_response_error(response).await?;
+        let response = reqwest::Client::new()
+            .get(url)
+            .add_rfc_headers()
+            .send()
+            .await?
+            .handle_response_error()
+            .await?;
 
         response
             .json()

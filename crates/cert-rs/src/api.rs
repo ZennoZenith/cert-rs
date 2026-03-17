@@ -206,48 +206,6 @@ async fn parse_acme_error(response: Response) -> Result<AcmeError> {
         .map_err(|e| Error::AcmeErrorParse(e.to_string()))
 }
 
-pub async fn handle_response_error(response: Response) -> Result<Response> {
-    let headers = response.headers();
-    // dbg!(headers);
-
-    let Some(ct) = headers.get(CONTENT_TYPE) else {
-        return Err(Error::ContentType);
-    };
-
-    let mime: Mime = ct.to_str()?.parse()?;
-
-    // dbg!(&mime);
-    // dbg!(&mime.type_());
-    // dbg!(&mime.subtype());
-
-    if mime.type_() == mime::APPLICATION
-        && mime.subtype() == "problem"
-        && mime.suffix().is_some_and(|v| v == "json")
-    {
-        let acme_error = parse_acme_error(response).await?;
-        return Err(Error::AcmeError(acme_error));
-    }
-
-    match (mime.type_(), mime.subtype()) {
-        (mime::APPLICATION, mime::JSON) => (),
-        (mime::APPLICATION, name) if name.as_str() == "pem-certificate-chain" => (),
-        // (mime::TEXT, mime::HTML) => println!("HTML"),
-        // (mime::TEXT, mime::PLAIN) => println!("HTML"),
-        _ => return Err(Error::InvalidContentType(mime)),
-    }
-
-    // TODO: ???
-    // let status = response.status();
-    // dbg!(status);
-    // match status.as_u16() {
-    //     100..=399 => (),
-    //     400 => (),
-    //     _ => (),
-    // };
-
-    Ok(response)
-}
-
 pub trait RequestBuilderExt {
     fn add_rfc_headers(self) -> Self;
 }
@@ -260,6 +218,56 @@ impl RequestBuilderExt for RequestBuilder {
                 CONTENT_TYPE,
                 HeaderValue::from_static("application/jose+json"),
             )
+    }
+}
+
+pub trait ResponseExt {
+    async fn handle_response_error(self) -> Result<Self>
+    where
+        Self: std::marker::Sized;
+}
+
+impl ResponseExt for Response {
+    async fn handle_response_error(self) -> Result<Self> {
+        let headers = self.headers();
+        // dbg!(headers);
+
+        let Some(ct) = headers.get(CONTENT_TYPE) else {
+            return Err(Error::ContentType);
+        };
+
+        let mime: Mime = ct.to_str()?.parse()?;
+
+        // dbg!(&mime);
+        // dbg!(&mime.type_());
+        // dbg!(&mime.subtype());
+
+        if mime.type_() == mime::APPLICATION
+            && mime.subtype() == "problem"
+            && mime.suffix().is_some_and(|v| v == "json")
+        {
+            let acme_error = parse_acme_error(self).await?;
+            return Err(Error::AcmeError(acme_error));
+        }
+
+        match (mime.type_(), mime.subtype()) {
+            (mime::APPLICATION, mime::JSON) => (),
+            (mime::APPLICATION, name) if name.as_str() == "pem-certificate-chain" => (),
+            // (mime::TEXT, mime::HTML) => println!("HTML"),
+            // (mime::TEXT, mime::PLAIN) => println!("HTML"),
+            _ => return Err(Error::InvalidContentType(mime)),
+        }
+
+        // TODO: ???
+        // let status = response.status();
+        // dbg!(status);
+        // match status.as_u16() {
+        //     100..=399 => (),
+        //     400 => (),
+        //     _ => (),
+        // };
+
+        Ok(self)
     }
 }
 

@@ -1,7 +1,7 @@
 use crate::{
     AcmeClient, Result,
     account::Account,
-    api::{AcmeApiBody, RequestBuilderExt as _, handle_response_error},
+    api::{AcmeApiBody, RequestBuilderExt as _, ResponseExt as _},
     authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
     b64,
 };
@@ -71,9 +71,10 @@ impl Authorization {
             .add_rfc_headers()
             .json(&jws)
             .send()
+            .await?
+            .handle_response_error()
             .await?;
 
-        let response = handle_response_error(response).await?;
         let authorization = response.json::<Self>().await?;
         Ok(authorization)
     }

@@ -6,7 +6,7 @@ use url::Url;
 
 use crate::{
     AcmeClient, Error, Result,
-    api::{AcmeApiBody, RequestBuilderExt, extract_location_header, handle_response_error},
+    api::{AcmeApiBody, RequestBuilderExt, ResponseExt as _, extract_location_header},
     authentication::{
         Jwk, JwkOrKid, JwkThumbprint, Jws, JwsAlgorithm, JwsProtectedHeaders,
         rsa_private_to_rsa_public,
@@ -43,7 +43,6 @@ pub struct AccountCreate {
     Eq,
 )]
 #[strum(ascii_case_insensitive)]
-#[strum(serialize_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 #[non_exhaustive]
 pub enum AccountStatus {
@@ -222,9 +221,9 @@ impl Account {
             .add_rfc_headers()
             .json(&jws)
             .send()
+            .await?
+            .handle_response_error()
             .await?;
-
-        let response = handle_response_error(response).await?;
 
         // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
         let account_id = extract_location_header(response.headers()).map(Into::into)?;
@@ -284,9 +283,9 @@ impl Account {
             .add_rfc_headers()
             .json(&jws)
             .send()
+            .await?
+            .handle_response_error()
             .await?;
-
-        let response = handle_response_error(response).await?;
 
         let AccountObject { status, orders, .. } = response.json::<AccountObject>().await?;
 

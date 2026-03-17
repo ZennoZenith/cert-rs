@@ -1,7 +1,7 @@
 use crate::{
     AcmeClient, AcmeError, Error, Result,
     account::Account,
-    api::{AcmeApiBody, RequestBuilderExt as _, extract_location_header, handle_response_error},
+    api::{AcmeApiBody, RequestBuilderExt as _, ResponseExt as _, extract_location_header},
     authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
     b64, csr,
     time::TimeRfc3339,
@@ -122,9 +122,10 @@ impl Order {
             .add_rfc_headers()
             .json(&jws)
             .send()
+            .await?
+            .handle_response_error()
             .await?;
 
-        let response = handle_response_error(response).await?;
         let order_url: Url = extract_location_header(response.headers())?;
         let order = response.json::<Self>().await?;
 
@@ -156,9 +157,9 @@ impl Order {
             .add_rfc_headers()
             .json(&jws)
             .send()
+            .await?
+            .handle_response_error()
             .await?;
-
-        let response = handle_response_error(response).await?;
 
         let order = response.json::<Self>().await?;
 
@@ -198,9 +199,9 @@ impl Order {
             .add_rfc_headers()
             .json(&jws)
             .send()
+            .await?
+            .handle_response_error()
             .await?;
-
-        let response = handle_response_error(response).await?;
 
         let finiazlize = response.json::<Self>().await?;
         dbg!(finiazlize);
@@ -237,10 +238,10 @@ impl Order {
             .add_rfc_headers()
             .json(&jws)
             .send()
+            .await?
+            .handle_response_error()
             .await?;
         // response "content-type": "application/pem-certificate-chain; charset=utf-8",
-
-        let response = handle_response_error(response).await?;
 
         let cert = response.text().await?;
 
