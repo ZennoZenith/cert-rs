@@ -113,6 +113,7 @@ impl Order {
             auth: JwkOrKid::Kid(account.account_id().clone()),
             nonce,
         };
+
         let body = AcmeApiBody::Other(serde_json::json!({"identifiers":identifiers}));
         let jws = Jws::new(account.private_key().clone(), jws_protected_headers, body);
 

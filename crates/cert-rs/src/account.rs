@@ -203,7 +203,6 @@ impl Account {
         let jwk: Jwk = public_key.into();
 
         let nonce = &acme_client.nonce().await?;
-
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url,

@@ -55,14 +55,14 @@ async fn main() -> Result<()> {
 
     let authorization_with_urls = acme_api.challenges(&order_status).await?;
 
-    let challange_responders =
+    let challenge_responders =
         acme_api.clean_challenges(&authorization_with_urls).await?;
 
-    handle_http_01_challenge(&challange_responders).await?;
-    handle_dns_01_challenge(&challange_responders).await?;
+    handle_http_01_challenge(&challenge_responders).await?;
+    handle_dns_01_challenge(&challenge_responders).await?;
 
     let _authorization_with_urls =
-        acme_api.respond_to_challanges(&authorization_with_urls).await?;
+        acme_api.respond_to_challenges(&authorization_with_urls).await?;
 
     for sec in 4..6 {
         tokio::time::sleep(std::time::Duration::from_secs(sec)).await;
@@ -80,7 +80,7 @@ async fn main() -> Result<()> {
 }
 
 async fn handle_http_01_challenge(
-    challange_responders: &[ChallengeResponder],
+    challenge_responders: &[ChallengeResponder],
 ) -> Result<()> {
     let chall_test_srv: Url = std::env::var("TEST_CHALL_TEST_SRV")
         .unwrap_or(String::from("http://localhost:8055"))
@@ -88,12 +88,12 @@ async fn handle_http_01_challenge(
     let http_01_url = chall_test_srv.join("add-http01").unwrap().to_string();
     let clear_http_01 = chall_test_srv.join("del-http01").unwrap().to_string();
 
-    // http_01 challanges
-    for challenge_token in challange_responders
+    // http_01 challenges
+    for challenge_token in challenge_responders
         .iter()
         .filter(|v| v.r#type == ChallengeType::Http01)
     {
-        // clear http_01 challanges
+        // clear http_01 challenges
         reqwest::Client::new()
             .post(&clear_http_01)
             .json(&serde_json::json!({
@@ -116,7 +116,7 @@ async fn handle_http_01_challenge(
 }
 
 async fn handle_dns_01_challenge(
-    challange_responders: &[ChallengeResponder],
+    challenge_responders: &[ChallengeResponder],
 ) -> Result<()> {
     let chall_test_srv: Url = std::env::var("TEST_CHALL_TEST_SRV")
         .unwrap_or(String::from("http://localhost:8055"))
@@ -125,12 +125,12 @@ async fn handle_dns_01_challenge(
     let dns_01_url = chall_test_srv.join("set-txt").unwrap().to_string();
     let clear_dns_01 = chall_test_srv.join("clear-txt").unwrap().to_string();
 
-    // dns_01 challanges
-    for challenge_token in challange_responders
+    // dns_01 challenges
+    for challenge_token in challenge_responders
         .iter()
         .filter(|v| v.r#type == ChallengeType::Dns01)
     {
-        // clear dns_01 challanges
+        // clear dns_01 challenges
         let host = format!("_acme-challenge.{}.", challenge_token.domain);
         reqwest::Client::new()
             .post(&clear_dns_01)

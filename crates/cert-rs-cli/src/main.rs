@@ -132,7 +132,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
         challenge_urls.push(challenge_url);
     }
 
-    println!("Responding to challange in 3 seconds");
+    println!("Responding to challenge in 3 seconds");
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
     for challenge_url in challenge_urls {
@@ -197,7 +197,7 @@ async fn handle_http_01_challenge(
         .expect("Cannot join url path")
         .to_string();
 
-    // clear http_01 challanges
+    // clear http_01 challenges
     reqwest::Client::new()
         .post(&clear_http_01)
         .json(&serde_json::json!({
@@ -238,7 +238,7 @@ async fn handle_dns_01_challenge(
         .expect("Cannot join url path")
         .to_string();
 
-    // dns_01 challanges
+    // dns_01 challenges
     let host = format!("_acme-challenge.{domain}.");
 
     reqwest::Client::new()

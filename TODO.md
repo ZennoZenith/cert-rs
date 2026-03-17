@@ -1,4 +1,3 @@
-- Fix `challange` to `challenge`
 - features: `Deserialize`
 - Write documentation from RFC8555
 - Handle nonce error
