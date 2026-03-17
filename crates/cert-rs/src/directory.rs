@@ -27,10 +27,9 @@ pub struct Directory {
 
 /// ACME Directory Metadata Fields.
 ///
-/// Defined in [RFC 8555 §7.1.1].
+/// Defined in [RFC 8555 §9.7.6].
 ///
-/// [RFC 8555 §7.1.1]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.6
-
+/// [RFC 8555 §9.7.6]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.6
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryMeta {
@@ -78,6 +77,13 @@ impl Directory {
     /// # Errors
     ///
     /// TODO: Write error docs
+    pub fn new_from_json(directory_json: &str) -> Result<Self> {
+        serde_json::from_str(directory_json).map_err(|e| Error::DirectoryParse(e.to_string()))
+    }
+
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub async fn lets_encrypt() -> Result<Self> {
         Self::new_from_url(Self::LETS_ENCRYPT_URL).await
     }
@@ -106,3 +112,36 @@ impl Directory {
         self.meta.as_ref().map(|v| v.external_account_required)?
     }
 }
+
+// region:    --- Tests
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+    use super::*;
+
+    #[test]
+    fn directory_from_json_str() {
+        const DIRECTORY_JSON: &str = r#"{
+   "keyChange": "https://localhost:14000/rollover-account-key",
+   "meta": {
+      "caaIdentities": [
+         "pebble.letsencrypt.org"
+      ],
+      "externalAccountRequired": false,
+      "profiles": {
+         "default": "The profile you know and love",
+         "shortlived": "A short-lived cert profile, without actual enforcement"
+      },
+      "termsOfService": "data:text/plain,Do%20what%20thou%20wilt"
+   },
+   "newAccount": "https://localhost:14000/sign-me-up",
+   "newNonce": "https://localhost:14000/nonce-plz",
+   "newOrder": "https://localhost:14000/order-plz",
+   "renewalInfo": "https://localhost:14000/draft-ietf-acme-ari-03/renewalInfo",
+   "revokeCert": "https://localhost:14000/revoke-cert"
+}"#;
+
+        assert!(Directory::new_from_json(DIRECTORY_JSON).is_ok());
+    }
+}
+// endregion: --- Tests

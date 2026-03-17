@@ -8,8 +8,6 @@ pub enum Error {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
-    // #[error("{0}")]
-    // Url(String),
     #[error("{0}")]
     DirectoryParse(String),
 
@@ -24,8 +22,4 @@ pub enum Error {
 
     #[error("{0}")]
     AccountStatusNoValid(String),
-    // GetReqwest(String),
-    // // -- Modules
-    // #[error(transparent)]
-    // Scheme(#[from] scheme::Error),
 }
