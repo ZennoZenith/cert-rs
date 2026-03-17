@@ -1,3 +1,5 @@
+use std::fmt;
+
 use openssl::{pkey::Private, rsa::Rsa};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -72,12 +74,13 @@ struct AccountObject {
     orders: Url,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
+#[must_use]
 pub struct AccountId(Url);
 
 impl AccountId {
-    #[must_use]
+    #[must_use = "Account url is must use"]
     pub const fn new(url: Url) -> Self {
         Self(url)
     }
@@ -93,6 +96,32 @@ impl AccountId {
     }
 }
 
+impl std::ops::Deref for AccountId {
+    type Target = Url;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<Url> for AccountId {
+    fn as_ref(&self) -> &Url {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<Url> for AccountId {
+    fn borrow(&self) -> &Url {
+        &self.0
+    }
+}
+
+impl fmt::Display for AccountId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 impl From<Url> for AccountId {
     fn from(url: Url) -> Self {
         Self(url)
@@ -105,17 +134,19 @@ impl From<AccountId> for Url {
     }
 }
 
-impl std::ops::Deref for AccountId {
-    type Target = Url;
+impl std::str::FromStr for AccountId {
+    type Err = url::ParseError;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self(Url::parse(s)?))
     }
 }
 
-impl AsRef<Url> for AccountId {
-    fn as_ref(&self) -> &Url {
-        &self.0
+impl TryFrom<&str> for AccountId {
+    type Error = url::ParseError;
+
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        Ok(Self(Url::parse(value)?))
     }
 }
 

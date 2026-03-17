@@ -6,7 +6,7 @@
 #![warn(clippy::nursery)]
 #![warn(clippy::pedantic)]
 #![warn(clippy::perf)]
-#![allow(clippy::multiple_crate_versions)] // FIX: For exploratory dev.
+#![allow(clippy::multiple_crate_versions)] // FIX:
 
 mod api;
 mod b64;
