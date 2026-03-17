@@ -128,27 +128,33 @@ pub enum Challenge {
 }
 
 impl Challenge {
+    #[must_use]
     pub const fn is_supported(&self) -> bool {
         matches!(self, Self::Known { .. })
     }
 }
 
 impl KnownChallenge {
+    #[must_use]
     pub const fn base(&self) -> &ChallengeBase {
         match self {
-            Self::Http01(Http01Challenge { base, .. }) => base,
-            Self::Dns01(Dns01Challenge { base, .. }) => base,
+            Self::Http01(Http01Challenge { base, .. })
+            | Self::Dns01(Dns01Challenge { base, .. }) => base,
         }
     }
 
     /// Retruns Option because later new challenge type might not have token field
+    #[must_use]
     pub const fn token(&self) -> Option<&str> {
         match self {
-            Self::Http01(Http01Challenge { token, .. }) => Some(token),
-            Self::Dns01(Dns01Challenge { token, .. }) => Some(token),
+            Self::Http01(Http01Challenge { token, .. })
+            | Self::Dns01(Dns01Challenge { token, .. }) => Some(token),
         }
     }
 
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub async fn respond(
         acme_client: &AcmeClient,
         directory: &Directory,

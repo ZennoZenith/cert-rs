@@ -94,6 +94,10 @@ pub struct Order {
 
 impl Order {
     /// Return (Url: ordre url, Order)
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub async fn create(
         acme_client: &AcmeClient,
         directory: &Directory,
@@ -102,7 +106,7 @@ impl Order {
     ) -> Result<(Url, Self)> {
         let url = &directory.new_order;
 
-        let identifiers: Vec<Identifier> = domains.iter().map(|v| v.into()).collect();
+        let identifiers: Vec<Identifier> = domains.iter().map(Into::into).collect();
 
         let nonce = &acme_client.nonce(directory.new_nonce.clone()).await?;
         let jws_protected_headers = JwsProtectedHeaders {
@@ -129,6 +133,9 @@ impl Order {
         Ok((order_url, order))
     }
 
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub async fn status(
         acme_client: &AcmeClient,
         directory: &Directory,
@@ -162,6 +169,10 @@ impl Order {
     }
 
     /// Returns csr
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub async fn finalize(
         &self,
         acme_client: &AcmeClient,
@@ -169,11 +180,11 @@ impl Order {
         account: &Account,
     ) -> Result<X509Req> {
         let domain_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
-        let domain_pkey =
+        let domain_private_key =
             PKey::from_rsa(domain_key).map_err(|e| Error::Unimplemented(e.to_string()))?;
 
         let domains: Vec<String> = self.identifiers.iter().map(|v| v.value.clone()).collect();
-        let csr = csr::generate_csr(domain_pkey, &domains)
+        let csr = csr::generate_csr(&domain_private_key, &domains)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
         let csr_der_bytes = csr.to_der().map_err(|e| Error::Unimplemented(e.to_string()))?;
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
@@ -205,6 +216,9 @@ impl Order {
         Ok(csr)
     }
 
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub async fn download_cert(
         &self,
         acme_client: &AcmeClient,

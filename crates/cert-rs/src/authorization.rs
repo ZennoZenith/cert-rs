@@ -52,6 +52,9 @@ pub struct Authorization {
 }
 
 impl Authorization {
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub async fn get(
         acme_client: &AcmeClient,
         directory: &Directory,
@@ -81,10 +84,12 @@ impl Authorization {
         Ok(authorization)
     }
 
+    #[must_use]
     pub fn gen_keyauth(&self, challenge_token: &str, jwk_thumbprint: &str) -> String {
-        format!("{}.{}", challenge_token, jwk_thumbprint)
+        format!("{challenge_token}.{jwk_thumbprint}")
     }
 
+    #[must_use]
     pub fn gen_sha_256_keyauth(&self, challenge_token: &str, jwk_thumbprint: &str) -> String {
         let keyauth = self.gen_keyauth(challenge_token, jwk_thumbprint);
         let hash = Sha256::digest(&keyauth).to_vec();

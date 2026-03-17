@@ -61,9 +61,12 @@ pub enum AccountStatus {
 #[serde(rename_all = "camelCase")]
 struct AccountObject {
     status: AccountStatus,
+    #[allow(dead_code)]
     contact: Option<Vec<String>>,
+    #[allow(dead_code)]
     terms_of_service_agreed: Option<bool>,
     // TODO: external_account_binding object type
+    #[allow(dead_code)]
     external_account_binding: Option<serde_json::Value>,
     /// A Url from which a list of orders submitted by this acocount can be fetched
     orders: Url,
