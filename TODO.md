@@ -1,3 +1,4 @@
+- Correct scoping of modules
 - Acme Retry-After header
 - tracing support
 - Write documentation from RFC8555

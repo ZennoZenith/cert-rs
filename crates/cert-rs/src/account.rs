@@ -10,7 +10,7 @@ use crate::{
 
 #[derive(Debug, Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AccountCreate {
+pub struct NewAccount {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terms_of_service_agreed: Option<bool>,
 
@@ -114,7 +114,7 @@ impl Account {
     async fn fetch_of_create(
         acme_client: &AcmeClient,
         private_key: &Rsa<Private>,
-        account_create: AccountCreate,
+        account_create: NewAccount,
     ) -> Result<Kid> {
         #[derive(Deserialize)]
         struct IntermidiateAccount {
@@ -151,7 +151,7 @@ impl Account {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn create(acme_client: &AcmeClient, account_create: AccountCreate) -> Result<Self> {
+    pub async fn create(acme_client: &AcmeClient, account_create: NewAccount) -> Result<Self> {
         let private_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
         let kid = Self::fetch_of_create(acme_client, &private_key, account_create).await?;
 
@@ -212,7 +212,7 @@ impl Account {
         acme_client: &AcmeClient,
         private_key: Rsa<Private>,
     ) -> Result<Self> {
-        let account_create = AccountCreate {
+        let account_create = NewAccount {
             only_return_existing: Some(true),
             ..Default::default()
         };

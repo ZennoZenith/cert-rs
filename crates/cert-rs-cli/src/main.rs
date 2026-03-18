@@ -11,7 +11,7 @@
 
 use cert_rs::{
     AcmeClient, Error,
-    account::{Account, AccountCreate},
+    account::{Account, NewAccount},
     authorization::Authorization,
     challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
     directory::Directory,
@@ -78,7 +78,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     let acme_client = AcmeClient::new(client, directory);
 
-    let account_create = AccountCreate {
+    let account_create = NewAccount {
         terms_of_service_agreed: Some(true),
         contacts: Some(vec![String::from("mailto:test@example.com")]),
         // only_return_existing: Some(true),
@@ -123,10 +123,10 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
         if wildcard {
             let sha_256_keyauth =
-                authorization.gen_sha_256_keyauth(token, account.jwk_thumbprint());
+                Authorization::gen_sha_256_keyauth(token, account.jwk_thumbprint());
             handle_dns_01_challenge(domain, &sha_256_keyauth).await?;
         } else {
-            let keyauth = authorization.gen_keyauth(token, account.jwk_thumbprint());
+            let keyauth = Authorization::gen_keyauth(token, account.jwk_thumbprint());
             handle_http_01_challenge(token, &keyauth).await?;
         }
 

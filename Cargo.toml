@@ -3,7 +3,7 @@ members = ["crates/cert-rs", "crates/cert-rs-cli"]
 resolver = "3"
 
 [workspace.package]
-version = "0.0.0"
+version = "0.0.1"
 description = ""
 authors = ["Zenno Zenith <95485961+ZennoZenith@users.noreply.github.com>"]
 license = "GNU AGPLv3"

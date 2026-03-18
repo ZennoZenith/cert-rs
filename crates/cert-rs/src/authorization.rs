@@ -22,7 +22,6 @@ use crate::{challenge::Challenge, order::Identifier, time::TimeRfc3339};
 )]
 #[strum(ascii_case_insensitive)]
 #[serde(rename_all = "lowercase")]
-#[non_exhaustive]
 pub enum AuthorizationStatus {
     #[default]
     Pending,
@@ -62,13 +61,13 @@ impl Authorization {
     }
 
     #[must_use]
-    pub fn gen_keyauth(&self, challenge_token: &str, jwk_thumbprint: &str) -> String {
+    pub fn gen_keyauth(challenge_token: &str, jwk_thumbprint: &str) -> String {
         format!("{challenge_token}.{jwk_thumbprint}")
     }
 
     #[must_use]
-    pub fn gen_sha_256_keyauth(&self, challenge_token: &str, jwk_thumbprint: &str) -> String {
-        let keyauth = self.gen_keyauth(challenge_token, jwk_thumbprint);
+    pub fn gen_sha_256_keyauth(challenge_token: &str, jwk_thumbprint: &str) -> String {
+        let keyauth = Self::gen_keyauth(challenge_token, jwk_thumbprint);
         let hash = Sha256::digest(&keyauth).to_vec();
 
         b64::b64u_encode(hash)

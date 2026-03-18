@@ -54,7 +54,7 @@ impl AcmeClient {
             .map(Box::from)
     }
 
-    pub(self) async fn enqueue_nonce(&self, headers: &HeaderMap) {
+    async fn enqueue_nonce(&self, headers: &HeaderMap) {
         let Some(nonce) = Self::extract_nonce(headers) else {
             #[cfg(feature = "tracing")]
             tracing::warn!("replay-nonce header not found in request");

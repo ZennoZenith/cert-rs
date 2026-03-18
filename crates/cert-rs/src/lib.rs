@@ -8,6 +8,7 @@
 #![warn(clippy::perf)]
 #![allow(clippy::multiple_crate_versions)] // FIX:
 
+mod authentication;
 mod b64;
 mod client;
 mod csr;
@@ -15,7 +16,6 @@ mod error;
 mod time;
 
 pub mod account;
-pub mod authentication;
 pub mod authorization;
 pub mod challenge;
 pub mod directory;
