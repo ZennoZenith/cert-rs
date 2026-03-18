@@ -17,6 +17,8 @@ use api::{AcmeApiBody, Error, RequestBuilderExt as _, ResponseExt as _, Result};
 pub mod api;
 
 const MAX_NONCE_STORE_CAPACITY: usize = 100;
+const MAX_NONCE_RETRIES: usize = 10;
+const NONCE_RETRIES_DURATION_MS: u64 = 500;
 
 pub struct AcmeClient {
     reqwest_client: reqwest::Client,
@@ -98,8 +100,7 @@ impl AcmeClient {
         auth: JwkOrKid<'_>,
         body: AcmeApiBody<T>,
     ) -> Result<Response> {
-        let mut nonce_retry: usize = 0;
-        loop {
+        for i in 0..MAX_NONCE_RETRIES {
             let nonce = self.nonce().await?;
 
             // TODO: try to optimize auth and body clones
@@ -120,14 +121,19 @@ impl AcmeClient {
 
             match maybe_response {
                 Err(Error::AcmeError(AcmeError {
-                    type_: acme_error_type @ api::AcmeErrorType::BadNonce,
+                    type_: api::AcmeErrorType::BadNonce,
                     ..
                 })) => {
-                    nonce_retry += 1;
-                    println!("AcmeErrorType: {acme_error_type}. Retried: {nonce_retry}");
+                    println!("Bad nonce. retrying... {}", i + 1);
+                    // TODO: Set throttle time for env or config or something
+                    tokio::time::sleep(std::time::Duration::from_millis(NONCE_RETRIES_DURATION_MS))
+                        .await;
                 }
-                response => break response,
+                response => return response,
             }
         }
+
+        println!("Could not get nonce after max({MAX_NONCE_RETRIES}) retries");
+        Err(Error::MaxNonceRetry(MAX_NONCE_RETRIES))
     }
 }

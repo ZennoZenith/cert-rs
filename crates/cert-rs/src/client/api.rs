@@ -31,6 +31,9 @@ pub enum Error {
     #[error("Cannot extract content-type from response")]
     ContentType,
 
+    #[error("Max Nonce Retry reached. max = {0}")]
+    MaxNonceRetry(usize),
+
     #[error("{0}")]
     AcmeErrorParse(String),
 
