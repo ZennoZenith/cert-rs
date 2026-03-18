@@ -114,7 +114,7 @@ impl Order {
 
         let response = acme_client
             .client()
-            .post(url.to_owned())
+            .post(url.clone())
             .add_rfc_headers()
             .json(&jws)
             .send()
@@ -145,7 +145,7 @@ impl Order {
 
         let response = acme_client
             .client()
-            .post(url.to_owned())
+            .post(url.clone())
             .add_rfc_headers()
             .json(&jws)
             .send()
@@ -183,7 +183,7 @@ impl Order {
 
         let response = acme_client
             .client()
-            .post(url.to_owned())
+            .post(url.clone())
             .add_rfc_headers()
             .json(&jws)
             .send()
@@ -218,7 +218,7 @@ impl Order {
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
         let response = acme_client
             .client()
-            .post(url.to_owned())
+            .post(url.clone())
             .add_rfc_headers()
             .json(&jws)
             .send()

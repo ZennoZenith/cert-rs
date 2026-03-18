@@ -155,7 +155,7 @@ impl KnownChallenge {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn respond(acme_client: &AcmeClient, account: &Account, url: Url) -> Result<Self> {
+    pub async fn respond(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
         let url = &url;
 
         let nonce = &acme_client.nonce().await?;
@@ -166,7 +166,7 @@ impl KnownChallenge {
 
         let response = acme_client
             .client()
-            .post(url.to_owned())
+            .post(url.as_str())
             .add_rfc_headers()
             .json(&jws)
             .send()
@@ -181,7 +181,7 @@ impl KnownChallenge {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn get(acme_client: &AcmeClient, account: &Account, url: Url) -> Result<Self> {
+    pub async fn get(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
         let url = &url;
 
         let nonce = &acme_client.nonce().await?;
@@ -192,7 +192,7 @@ impl KnownChallenge {
 
         let response = acme_client
             .client()
-            .post(url.to_owned())
+            .post(url.as_str())
             .add_rfc_headers()
             .json(&jws)
             .send()

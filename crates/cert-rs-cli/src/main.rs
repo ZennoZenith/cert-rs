@@ -136,7 +136,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
     println!("Responding to challenge in 3 seconds");
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
-    for challenge_url in challenge_urls {
+    for challenge_url in &challenge_urls {
         let challenge = KnownChallenge::respond(&acme_client, &account, challenge_url).await?;
         dbg!(challenge);
     }
