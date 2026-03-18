@@ -217,6 +217,8 @@ impl Account {
             .json(&jws)
             .send()
             .await?
+            .extract_nonce(acme_client)
+            .await
             .handle_response_error()
             .await?;
 
@@ -275,6 +277,8 @@ impl Account {
             .json(&jws)
             .send()
             .await?
+            .extract_nonce(acme_client)
+            .await
             .handle_response_error()
             .await?;
 

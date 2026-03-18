@@ -119,6 +119,8 @@ impl Order {
             .json(&jws)
             .send()
             .await?
+            .extract_nonce(acme_client)
+            .await
             .handle_response_error()
             .await?;
 
@@ -150,6 +152,8 @@ impl Order {
             .json(&jws)
             .send()
             .await?
+            .extract_nonce(acme_client)
+            .await
             .handle_response_error()
             .await?;
 
@@ -188,6 +192,8 @@ impl Order {
             .json(&jws)
             .send()
             .await?
+            .extract_nonce(acme_client)
+            .await
             .handle_response_error()
             .await?;
 
@@ -223,6 +229,8 @@ impl Order {
             .json(&jws)
             .send()
             .await?
+            .extract_nonce(acme_client)
+            .await
             .handle_response_error()
             .await?;
         // response "content-type": "application/pem-certificate-chain; charset=utf-8",

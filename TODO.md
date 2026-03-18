@@ -1,4 +1,3 @@
-- Auto nonce getting and enquing
 - tracing support
 - Write documentation from RFC8555
 - Handle nonce error
