@@ -58,6 +58,7 @@ fn print_banner() {
     );
 }
 
+#[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> color_eyre::eyre::Result<()> {
     let config = Config::parse();

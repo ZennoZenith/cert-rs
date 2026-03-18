@@ -9,7 +9,7 @@ use sha2::{Digest as _, Sha256};
 use std::{ops::Deref, str::FromStr};
 use url::Url;
 
-use crate::{api::AcmeApiBody, b64};
+use crate::{account::AccountId, api::AcmeApiBody, b64};
 
 /// # Errors
 ///
@@ -99,6 +99,23 @@ where
             payload: Base64uEncoded(body),
         }
     }
+
+    pub const fn new_from_parts(
+        private_key: Rsa<Private>,
+        url: &'a Url,
+        auth: JwkOrKid,
+        nonce: &'a str,
+        body: AcmeApiBody<T>,
+    ) -> Self {
+        let jws_protected_headers = JwsProtectedHeaders {
+            algorithm: JwsAlgorithm::RS256,
+            url,
+            auth,
+            nonce,
+        };
+
+        Self::new(private_key, jws_protected_headers, body)
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -137,7 +154,7 @@ pub enum JwkOrKid {
     /// jwk is used before acme account creation
     Jwk(Jwk),
     /// kid is used after acme account creation
-    Kid(Url),
+    Kid(AccountId),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -344,7 +361,7 @@ mod tests {
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url: &Url::from_str("https://example.com").expect("Invalid url"),
-            auth: JwkOrKid::Kid(Url::from_str("https://example.com").expect("Invalid url")),
+            auth: JwkOrKid::Kid(AccountId::from_str("https://example.com").expect("Invalid url")),
             nonce: "some-nonce",
         };
 

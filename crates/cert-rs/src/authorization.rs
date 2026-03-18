@@ -2,7 +2,7 @@ use crate::{
     AcmeClient, Result,
     account::Account,
     api::{AcmeApiBody, RequestBuilderExt as _, ResponseExt as _},
-    authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
+    authentication::{JwkOrKid, Jws},
     b64,
 };
 use serde::{Deserialize, Serialize};
@@ -57,18 +57,14 @@ impl Authorization {
     /// TODO: Write error docs
     pub async fn get(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
         let nonce = &acme_client.nonce().await?;
-        let jws_protected_headers = JwsProtectedHeaders {
-            algorithm: JwsAlgorithm::RS256,
-            url,
-            auth: JwkOrKid::Kid(account.account_id().clone()),
-            nonce,
-        };
+
+        let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::EMPTY_STRING;
-        let jws = Jws::new(account.private_key().clone(), jws_protected_headers, body);
+        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
         let response = acme_client
             .client()
-            .post(url.to_owned())
+            .post(url.as_str())
             .add_rfc_headers()
             .json(&jws)
             .send()

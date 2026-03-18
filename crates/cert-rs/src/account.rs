@@ -7,10 +7,7 @@ use url::Url;
 use crate::{
     AcmeClient, Error, Result,
     api::{AcmeApiBody, RequestBuilderExt, ResponseExt as _, extract_location_header},
-    authentication::{
-        Jwk, JwkOrKid, JwkThumbprint, Jws, JwsAlgorithm, JwsProtectedHeaders,
-        rsa_private_to_rsa_public,
-    },
+    authentication::{Jwk, JwkOrKid, JwkThumbprint, Jws, rsa_private_to_rsa_public},
 };
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -177,8 +174,8 @@ impl Account {
         &self.orders
     }
 
-    #[must_use]
-    pub fn account_id(&self) -> &Url {
+    #[must_use = "Must use account id"]
+    pub const fn account_id(&self) -> &AccountId {
         &self.id
     }
 
@@ -207,19 +204,11 @@ impl Account {
         let public_key = rsa_private_to_rsa_public(&private_key)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
 
-        let jwk: Jwk = public_key.into();
-
         let nonce = &acme_client.nonce().await?;
-        let jws_protected_headers = JwsProtectedHeaders {
-            algorithm: JwsAlgorithm::RS256,
-            url,
-            auth: JwkOrKid::Jwk(jwk.clone()),
-            nonce,
-        };
 
+        let auth = JwkOrKid::Jwk(Jwk::from(public_key));
         let body = AcmeApiBody::Other(account_create);
-
-        let jws = Jws::new(private_key.clone(), jws_protected_headers, body);
+        let jws = Jws::new_from_parts(private_key, url, auth, nonce, body);
 
         let response = acme_client
             .client()
@@ -274,14 +263,10 @@ impl Account {
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
 
         let nonce = &acme_client.nonce().await?;
-        let jws_protected_headers = JwsProtectedHeaders {
-            algorithm: JwsAlgorithm::RS256,
-            url,
-            auth: JwkOrKid::Kid(url.clone()),
-            nonce,
-        };
+
+        let auth = JwkOrKid::Kid(account_id.clone());
         let body = AcmeApiBody::EMPTY_STRING;
-        let jws = Jws::new(private_key.clone(), jws_protected_headers, body);
+        let jws = Jws::new_from_parts(private_key.clone(), url, auth, nonce, body);
 
         let response = acme_client
             .client()

@@ -2,7 +2,7 @@ use crate::{
     AcmeClient, AcmeError, Error, Result,
     account::Account,
     api::{AcmeApiBody, RequestBuilderExt as _, ResponseExt as _, extract_location_header},
-    authentication::{JwkOrKid, Jws, JwsAlgorithm, JwsProtectedHeaders},
+    authentication::{JwkOrKid, Jws},
     b64, csr,
     time::TimeRfc3339,
 };
@@ -107,15 +107,10 @@ impl Order {
         let identifiers: Vec<Identifier> = domains.iter().map(Into::into).collect();
 
         let nonce = &acme_client.nonce().await?;
-        let jws_protected_headers = JwsProtectedHeaders {
-            algorithm: JwsAlgorithm::RS256,
-            url,
-            auth: JwkOrKid::Kid(account.account_id().clone()),
-            nonce,
-        };
 
+        let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::Other(serde_json::json!({"identifiers":identifiers}));
-        let jws = Jws::new(account.private_key().clone(), jws_protected_headers, body);
+        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
         let response = acme_client
             .client()
@@ -143,14 +138,10 @@ impl Order {
     ) -> Result<Self> {
         let url = order_url;
         let nonce = &acme_client.nonce().await?;
-        let jws_protected_headers = JwsProtectedHeaders {
-            algorithm: JwsAlgorithm::RS256,
-            url,
-            auth: JwkOrKid::Kid(account.account_id().clone()),
-            nonce,
-        };
+
+        let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::EMPTY_STRING;
-        let jws = Jws::new(account.private_key().clone(), jws_protected_headers, body);
+        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
         let response = acme_client
             .client()
@@ -185,14 +176,10 @@ impl Order {
 
         let url = &self.finalize;
         let nonce = &acme_client.nonce().await?;
-        let jws_protected_headers = JwsProtectedHeaders {
-            algorithm: JwsAlgorithm::RS256,
-            url,
-            auth: JwkOrKid::Kid(account.account_id().clone()),
-            nonce,
-        };
+
+        let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::Other(serde_json::json!({"csr":csr_der_encoded }));
-        let jws = Jws::new(account.private_key().clone(), jws_protected_headers, body);
+        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
         let response = acme_client
             .client()
@@ -223,14 +210,10 @@ impl Order {
         };
 
         let nonce = &acme_client.nonce().await?;
-        let jws_protected_headers = JwsProtectedHeaders {
-            algorithm: JwsAlgorithm::RS256,
-            url,
-            auth: JwkOrKid::Kid(account.account_id().clone()),
-            nonce,
-        };
+
+        let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::EMPTY_STRING;
-        let jws = Jws::new(account.private_key().clone(), jws_protected_headers, body);
+        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
         let response = acme_client
