@@ -155,7 +155,7 @@ impl KnownChallenge {
     pub async fn respond(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
         let url = &url;
 
-        let auth = JwkOrKid::Kid(account.account_id().clone());
+        let auth = JwkOrKid::Kid(account.kid());
         let body = AcmeApiBody::EMPTY_OBJECT;
         let response = acme_client.post(url, account.private_key(), auth, body).await?;
 
@@ -169,7 +169,7 @@ impl KnownChallenge {
     pub async fn get(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
         let url = &url;
 
-        let auth = JwkOrKid::Kid(account.account_id().clone());
+        let auth = JwkOrKid::Kid(account.kid());
         let body = AcmeApiBody::EMPTY_STRING;
         let response = acme_client.post(url, account.private_key(), auth, body).await?;
 

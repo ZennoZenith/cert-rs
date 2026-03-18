@@ -106,7 +106,7 @@ impl Order {
 
         let identifiers: Vec<Identifier> = domains.iter().map(Into::into).collect();
 
-        let auth = JwkOrKid::Kid(account.account_id().clone());
+        let auth = JwkOrKid::Kid(account.kid());
         let body = AcmeApiBody::Other(serde_json::json!({"identifiers":identifiers}));
 
         let response = acme_client.post(url, account.private_key(), auth, body).await?;
@@ -127,7 +127,7 @@ impl Order {
     ) -> Result<Self> {
         let url = order_url;
 
-        let auth = JwkOrKid::Kid(account.account_id().clone());
+        let auth = JwkOrKid::Kid(account.kid());
         let body = AcmeApiBody::EMPTY_STRING;
 
         let response = acme_client.post(url, account.private_key(), auth, body).await?;
@@ -147,7 +147,7 @@ impl Order {
         let domain_private_key =
             PKey::from_rsa(domain_key).map_err(|e| Error::Unimplemented(e.to_string()))?;
 
-        let domains: Vec<String> = self.identifiers.iter().map(|v| v.value.clone()).collect();
+        let domains: Vec<&str> = self.identifiers.iter().map(|v| v.value.as_str()).collect();
         let csr = csr::generate_csr(&domain_private_key, &domains)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
         let csr_der_bytes = csr.to_der().map_err(|e| Error::Unimplemented(e.to_string()))?;
@@ -155,7 +155,7 @@ impl Order {
 
         let url = &self.finalize;
 
-        let auth = JwkOrKid::Kid(account.account_id().clone());
+        let auth = JwkOrKid::Kid(account.kid());
         let body = AcmeApiBody::Other(serde_json::json!({"csr":csr_der_encoded }));
 
         let response = acme_client.post(url, account.private_key(), auth, body).await?;
@@ -178,7 +178,7 @@ impl Order {
             return Err(Error::CertificateUrlNotPresent);
         };
 
-        let auth = JwkOrKid::Kid(account.account_id().clone());
+        let auth = JwkOrKid::Kid(account.kid());
         let body = AcmeApiBody::EMPTY_STRING;
 
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error

@@ -1,5 +1,3 @@
-use std::fmt;
-
 use openssl::{pkey::Private, rsa::Rsa};
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -7,7 +5,7 @@ use url::Url;
 use crate::{
     AcmeClient, Error, Result,
     api::{AcmeApiBody, extract_location_header},
-    authentication::{Jwk, JwkOrKid, JwkThumbprint, rsa_private_to_rsa_public},
+    authentication::{Jwk, JwkOrKid, JwkThumbprint, Kid, rsa_private_to_rsa_public},
 };
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -74,86 +72,10 @@ pub struct AccountObject {
     pub orders: Url,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-#[must_use]
-pub struct AccountId(Url);
-
-impl AccountId {
-    #[must_use = "Account url is must use"]
-    pub const fn new(url: Url) -> Self {
-        Self(url)
-    }
-
-    #[must_use]
-    pub const fn as_url(&self) -> &Url {
-        &self.0
-    }
-
-    #[must_use]
-    pub fn into_inner(self) -> Url {
-        self.0
-    }
-}
-
-impl std::ops::Deref for AccountId {
-    type Target = Url;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl AsRef<Url> for AccountId {
-    fn as_ref(&self) -> &Url {
-        &self.0
-    }
-}
-
-impl std::borrow::Borrow<Url> for AccountId {
-    fn borrow(&self) -> &Url {
-        &self.0
-    }
-}
-
-impl fmt::Display for AccountId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.fmt(f)
-    }
-}
-
-impl From<Url> for AccountId {
-    fn from(url: Url) -> Self {
-        Self(url)
-    }
-}
-
-impl From<AccountId> for Url {
-    fn from(id: AccountId) -> Self {
-        id.0
-    }
-}
-
-impl std::str::FromStr for AccountId {
-    type Err = url::ParseError;
-
-    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
-        Ok(Self(Url::parse(s)?))
-    }
-}
-
-impl TryFrom<&str> for AccountId {
-    type Error = url::ParseError;
-
-    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
-        Ok(Self(Url::parse(value)?))
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Account {
     status: AccountStatus,
-    id: AccountId,
+    kid: Kid,
     private_key: Rsa<Private>,
 
     /// A Url from which a list of orders submitted by this acocount can be fetched
@@ -175,8 +97,8 @@ impl Account {
     }
 
     #[must_use = "Must use account id"]
-    pub const fn account_id(&self) -> &AccountId {
-        &self.id
+    pub const fn kid(&self) -> &Kid {
+        &self.kid
     }
 
     #[must_use]
@@ -189,11 +111,11 @@ impl Account {
         &self.jwk_thumbprint
     }
 
-    async fn fetch_of_create_account_id(
+    async fn fetch_of_create(
         acme_client: &AcmeClient,
         private_key: &Rsa<Private>,
         account_create: AccountCreate,
-    ) -> Result<AccountId> {
+    ) -> Result<Kid> {
         #[derive(Deserialize)]
         struct IntermidiateAccount {
             status: AccountStatus,
@@ -210,7 +132,7 @@ impl Account {
         let response = acme_client.post(url, private_key, auth, body).await?;
 
         // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
-        let account_id = extract_location_header(response.headers()).map(Into::into)?;
+        let kid = extract_location_header(response.headers()).map(Into::into)?;
 
         let intermediate_account = response
             .json::<IntermidiateAccount>()
@@ -223,7 +145,7 @@ impl Account {
             ));
         }
 
-        Ok(account_id)
+        Ok(kid)
     }
 
     /// # Errors
@@ -231,11 +153,9 @@ impl Account {
     /// TODO: Write error docs
     pub async fn create(acme_client: &AcmeClient, account_create: AccountCreate) -> Result<Self> {
         let private_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let kid = Self::fetch_of_create(acme_client, &private_key, account_create).await?;
 
-        let account_id =
-            Self::fetch_of_create_account_id(acme_client, &private_key, account_create).await?;
-
-        Self::get_account(acme_client, &account_id, &private_key).await
+        Self::get_account(acme_client, kid, private_key).await
     }
 
     /// # Errors
@@ -243,12 +163,12 @@ impl Account {
     /// TODO: Write error docs
     pub async fn get_account_object(
         acme_client: &AcmeClient,
-        account_id: &AccountId,
+        kid: &Kid,
         private_key: &Rsa<Private>,
     ) -> Result<AccountObject> {
-        let url: &Url = account_id;
+        let url: &Url = kid;
 
-        let auth = JwkOrKid::Kid(account_id.clone());
+        let auth = JwkOrKid::Kid(kid);
         let body = AcmeApiBody::EMPTY_STRING;
 
         let response = acme_client.post(url, private_key, auth, body).await?;
@@ -261,14 +181,14 @@ impl Account {
     /// TODO: Write error docs
     pub async fn get_account(
         acme_client: &AcmeClient,
-        account_id: &AccountId,
-        private_key: &Rsa<Private>,
+        kid: Kid,
+        private_key: Rsa<Private>,
     ) -> Result<Self> {
-        let public_key = rsa_private_to_rsa_public(private_key)
+        let public_key = rsa_private_to_rsa_public(&private_key)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
 
         let AccountObject { status, orders, .. } =
-            Self::get_account_object(acme_client, account_id, private_key).await?;
+            Self::get_account_object(acme_client, &kid, &private_key).await?;
 
         if status != AccountStatus::Valid {
             return Err(Error::AccountStatusNoValid(status.to_string()));
@@ -278,8 +198,8 @@ impl Account {
 
         Ok(Self {
             status,
-            id: account_id.clone(),
-            private_key: private_key.clone(),
+            kid,
+            private_key,
             orders,
             jwk_thumbprint,
         })
@@ -290,17 +210,15 @@ impl Account {
     /// TODO: Write error docs
     pub async fn get_account_with_private_key(
         acme_client: &AcmeClient,
-        private_key: &Rsa<Private>,
+        private_key: Rsa<Private>,
     ) -> Result<Self> {
         let account_create = AccountCreate {
             only_return_existing: Some(true),
             ..Default::default()
         };
+        let kid = Self::fetch_of_create(acme_client, &private_key, account_create).await?;
 
-        let account_id =
-            Self::fetch_of_create_account_id(acme_client, private_key, account_create).await?;
-
-        Self::get_account(acme_client, &account_id, private_key).await
+        Self::get_account(acme_client, kid, private_key).await
     }
 
     // TODO: Account Update

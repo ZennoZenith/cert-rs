@@ -95,19 +95,16 @@ impl AcmeClient {
         &self,
         url: &Url,
         private_key: &Rsa<Private>,
-        auth: JwkOrKid,
+        auth: JwkOrKid<'_>,
         body: AcmeApiBody<T>,
     ) -> Result<Response> {
         let mut nonce_retry: usize = 0;
         loop {
             let nonce = self.nonce().await?;
-            let jws = Jws::new_from_parts(
-                private_key.clone(),
-                url,
-                auth.clone(),
-                nonce.as_ref(),
-                body.clone(),
-            );
+
+            // TODO: try to optimize auth and body clones
+            let jws =
+                Jws::new_from_parts(private_key, url, auth.clone(), nonce.as_ref(), body.clone());
 
             let maybe_response = self
                 .reqwest_client

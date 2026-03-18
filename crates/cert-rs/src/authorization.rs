@@ -52,7 +52,7 @@ impl Authorization {
     ///
     /// TODO: Write error docs
     pub async fn get(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
-        let auth = JwkOrKid::Kid(account.account_id().clone());
+        let auth = JwkOrKid::Kid(account.kid());
         let body = AcmeApiBody::EMPTY_STRING;
 
         let response = acme_client.post(url, account.private_key(), auth, body).await?;

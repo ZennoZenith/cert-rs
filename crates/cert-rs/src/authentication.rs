@@ -4,12 +4,12 @@ use openssl::{
     rsa::Rsa,
     sign::Signer,
 };
-use serde::{Serialize, Serializer, ser::SerializeStruct as _};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct as _};
 use sha2::{Digest as _, Sha256};
-use std::{ops::Deref, str::FromStr};
+use std::{fmt, ops::Deref, str::FromStr};
 use url::Url;
 
-use crate::{account::AccountId, api::AcmeApiBody, b64};
+use crate::{api::AcmeApiBody, b64};
 
 /// # Errors
 ///
@@ -28,7 +28,7 @@ pub struct Base64uEncoded<T>(T);
 #[derive(Debug)]
 pub struct Jws<'a, T: Serialize + Clone> {
     /// TODO: Require to create signature (`{protected_b64}.{payload_b64}`)
-    private_key: Rsa<Private>,
+    private_key: &'a Rsa<Private>,
     protected: Base64uEncoded<JwsProtectedHeaders<'a>>,
     payload: Base64uEncoded<AcmeApiBody<T>>,
     // TODO: Document signature format
@@ -91,7 +91,7 @@ where
     T: Serialize + Clone,
 {
     pub const fn new(
-        private_key: Rsa<Private>,
+        private_key: &'a Rsa<Private>,
         jws_protected_headers: JwsProtectedHeaders<'a>,
         body: AcmeApiBody<T>,
     ) -> Self {
@@ -103,9 +103,9 @@ where
     }
 
     pub const fn new_from_parts(
-        private_key: Rsa<Private>,
+        private_key: &'a Rsa<Private>,
         url: &'a Url,
-        auth: JwkOrKid,
+        auth: JwkOrKid<'a>,
         nonce: &'a str,
         body: AcmeApiBody<T>,
     ) -> Self {
@@ -126,12 +126,13 @@ pub struct JwsProtectedHeaders<'a> {
     pub algorithm: JwsAlgorithm,
     pub url: &'a Url,
     #[serde(flatten)]
-    pub auth: JwkOrKid,
+    pub auth: JwkOrKid<'a>,
     pub nonce: &'a str,
 }
 
 #[derive(
     Debug,
+    Copy,
     Clone,
     Serialize,
     Default,
@@ -152,11 +153,11 @@ pub enum JwsAlgorithm {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum JwkOrKid {
+pub enum JwkOrKid<'a> {
     /// jwk is used before acme account creation
     Jwk(Jwk),
     /// kid is used after acme account creation
-    Kid(AccountId),
+    Kid(&'a Kid),
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -186,18 +187,79 @@ impl From<Rsa<Public>> for Jwk {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+#[must_use]
 pub struct Kid(Url);
 
-impl From<Url> for Kid {
-    fn from(kid: Url) -> Self {
-        Self(kid)
+impl Kid {
+    #[must_use = "Kid is must use"]
+    pub const fn new(url: Url) -> Self {
+        Self(url)
+    }
+
+    #[must_use]
+    pub const fn as_url(&self) -> &Url {
+        &self.0
+    }
+
+    #[must_use]
+    pub fn into_inner(self) -> Url {
+        self.0
     }
 }
 
-impl From<&Url> for Kid {
-    fn from(kid: &Url) -> Self {
-        Self(kid.clone())
+impl std::ops::Deref for Kid {
+    type Target = Url;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<Url> for Kid {
+    fn as_ref(&self) -> &Url {
+        &self.0
+    }
+}
+
+impl std::borrow::Borrow<Url> for Kid {
+    fn borrow(&self) -> &Url {
+        &self.0
+    }
+}
+
+impl fmt::Display for Kid {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl From<Url> for Kid {
+    fn from(url: Url) -> Self {
+        Self(url)
+    }
+}
+
+impl From<Kid> for Url {
+    fn from(id: Kid) -> Self {
+        id.0
+    }
+}
+
+impl std::str::FromStr for Kid {
+    type Err = url::ParseError;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        Ok(Self(Url::parse(s)?))
+    }
+}
+
+impl TryFrom<&str> for Kid {
+    type Error = url::ParseError;
+
+    fn try_from(value: &str) -> std::result::Result<Self, Self::Error> {
+        Ok(Self(Url::parse(value)?))
     }
 }
 
@@ -363,13 +425,13 @@ mod tests {
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url: &Url::from_str("https://example.com").expect("Invalid url"),
-            auth: JwkOrKid::Kid(AccountId::from_str("https://example.com").expect("Invalid url")),
+            auth: JwkOrKid::Kid(&Kid::from_str("https://example.com").expect("Invalid url")),
             nonce: "some-nonce",
         };
 
         let body = AcmeApiBody::EMPTY_STRING;
 
-        let json = serde_json::to_string(&Jws::new(private_key, jws_protected_headers, body))
+        let json = serde_json::to_string(&Jws::new(&private_key, jws_protected_headers, body))
             .expect("Cannot convert jws to json string");
 
         assert_eq!(
