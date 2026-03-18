@@ -1,8 +1,8 @@
 use crate::{
     AcmeClient, AcmeError, Error, Result,
     account::Account,
-    api::{AcmeApiBody, RequestBuilderExt as _, ResponseExt as _, extract_location_header},
-    authentication::{JwkOrKid, Jws},
+    api::{AcmeApiBody, extract_location_header},
+    authentication::JwkOrKid,
     b64, csr,
     time::TimeRfc3339,
 };
@@ -106,23 +106,10 @@ impl Order {
 
         let identifiers: Vec<Identifier> = domains.iter().map(Into::into).collect();
 
-        let nonce = &acme_client.nonce().await?;
-
         let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::Other(serde_json::json!({"identifiers":identifiers}));
-        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
-        let response = acme_client
-            .client()
-            .post(url.clone())
-            .add_rfc_headers()
-            .json(&jws)
-            .send()
-            .await?
-            .extract_nonce(acme_client)
-            .await
-            .handle_response_error()
-            .await?;
+        let response = acme_client.post(url, account.private_key(), auth, body).await?;
 
         let order_url: Url = extract_location_header(response.headers())?;
         let order = response.json::<Self>().await?;
@@ -139,23 +126,11 @@ impl Order {
         order_url: &Url,
     ) -> Result<Self> {
         let url = order_url;
-        let nonce = &acme_client.nonce().await?;
 
         let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::EMPTY_STRING;
-        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
-        let response = acme_client
-            .client()
-            .post(url.clone())
-            .add_rfc_headers()
-            .json(&jws)
-            .send()
-            .await?
-            .extract_nonce(acme_client)
-            .await
-            .handle_response_error()
-            .await?;
+        let response = acme_client.post(url, account.private_key(), auth, body).await?;
 
         let order = response.json::<Self>().await?;
 
@@ -179,23 +154,11 @@ impl Order {
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
 
         let url = &self.finalize;
-        let nonce = &acme_client.nonce().await?;
 
         let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::Other(serde_json::json!({"csr":csr_der_encoded }));
-        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
-        let response = acme_client
-            .client()
-            .post(url.clone())
-            .add_rfc_headers()
-            .json(&jws)
-            .send()
-            .await?
-            .extract_nonce(acme_client)
-            .await
-            .handle_response_error()
-            .await?;
+        let response = acme_client.post(url, account.private_key(), auth, body).await?;
 
         let finiazlize = response.json::<Self>().await?;
         dbg!(finiazlize);
@@ -215,24 +178,11 @@ impl Order {
             return Err(Error::CertificateUrlNotPresent);
         };
 
-        let nonce = &acme_client.nonce().await?;
-
         let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::EMPTY_STRING;
-        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
-        let response = acme_client
-            .client()
-            .post(url.clone())
-            .add_rfc_headers()
-            .json(&jws)
-            .send()
-            .await?
-            .extract_nonce(acme_client)
-            .await
-            .handle_response_error()
-            .await?;
+        let response = acme_client.post(url, account.private_key(), auth, body).await?;
         // response "content-type": "application/pem-certificate-chain; charset=utf-8",
 
         let cert = response.text().await?;

@@ -27,9 +27,11 @@ pub struct Base64uEncoded<T>(T);
 
 #[derive(Debug)]
 pub struct Jws<'a, T: Serialize + Clone> {
+    /// TODO: Require to create signature (`{protected_b64}.{payload_b64}`)
     private_key: Rsa<Private>,
     protected: Base64uEncoded<JwsProtectedHeaders<'a>>,
     payload: Base64uEncoded<AcmeApiBody<T>>,
+    // TODO: Document signature format
     // signature: calculated at serializaion time,
 }
 

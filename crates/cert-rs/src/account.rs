@@ -6,8 +6,8 @@ use url::Url;
 
 use crate::{
     AcmeClient, Error, Result,
-    api::{AcmeApiBody, RequestBuilderExt, ResponseExt as _, extract_location_header},
-    authentication::{Jwk, JwkOrKid, JwkThumbprint, Jws, rsa_private_to_rsa_public},
+    api::{AcmeApiBody, extract_location_header},
+    authentication::{Jwk, JwkOrKid, JwkThumbprint, rsa_private_to_rsa_public},
 };
 
 #[derive(Debug, Default, Clone, Serialize)]
@@ -54,24 +54,24 @@ pub enum AccountStatus {
 /// [RFC 8555 §9.7.1]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.1
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct AccountObject {
-    status: AccountStatus,
+pub struct AccountObject {
+    pub status: AccountStatus,
 
     #[allow(dead_code)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    contact: Option<Vec<String>>,
+    pub contact: Option<Vec<String>>,
 
     #[allow(dead_code)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    terms_of_service_agreed: Option<bool>,
+    pub terms_of_service_agreed: Option<bool>,
 
     // TODO: external_account_binding object type
     #[allow(dead_code)]
     #[serde(skip_serializing_if = "Option::is_none")]
-    external_account_binding: Option<serde_json::Value>,
+    pub external_account_binding: Option<serde_json::Value>,
 
     /// A Url from which a list of orders submitted by this acocount can be fetched
-    orders: Url,
+    pub orders: Url,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -191,7 +191,7 @@ impl Account {
 
     async fn fetch_of_create_account_id(
         acme_client: &AcmeClient,
-        private_key: Rsa<Private>,
+        private_key: &Rsa<Private>,
         account_create: AccountCreate,
     ) -> Result<AccountId> {
         #[derive(Deserialize)]
@@ -201,26 +201,13 @@ impl Account {
 
         let url = &acme_client.directory().new_account;
 
-        let public_key = rsa_private_to_rsa_public(&private_key)
+        let public_key = rsa_private_to_rsa_public(private_key)
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
-
-        let nonce = &acme_client.nonce().await?;
 
         let auth = JwkOrKid::Jwk(Jwk::from(public_key));
         let body = AcmeApiBody::Other(account_create);
-        let jws = Jws::new_from_parts(private_key, url, auth, nonce, body);
 
-        let response = acme_client
-            .client()
-            .post(url.clone())
-            .add_rfc_headers()
-            .json(&jws)
-            .send()
-            .await?
-            .extract_nonce(acme_client)
-            .await
-            .handle_response_error()
-            .await?;
+        let response = acme_client.post(url, private_key, auth, body).await?;
 
         // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
         let account_id = extract_location_header(response.headers()).map(Into::into)?;
@@ -246,43 +233,42 @@ impl Account {
         let private_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
 
         let account_id =
-            Self::fetch_of_create_account_id(acme_client, private_key.clone(), account_create)
-                .await?;
+            Self::fetch_of_create_account_id(acme_client, &private_key, account_create).await?;
 
-        Self::fetch_account(acme_client, &account_id, private_key).await
+        Self::get_account(acme_client, &account_id, &private_key).await
     }
 
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn fetch_account(
+    pub async fn get_account_object(
         acme_client: &AcmeClient,
         account_id: &AccountId,
-        private_key: Rsa<Private>,
-    ) -> Result<Self> {
+        private_key: &Rsa<Private>,
+    ) -> Result<AccountObject> {
         let url: &Url = account_id;
-        let public_key = rsa_private_to_rsa_public(&private_key)
-            .map_err(|e| Error::Unimplemented(e.to_string()))?;
-
-        let nonce = &acme_client.nonce().await?;
 
         let auth = JwkOrKid::Kid(account_id.clone());
         let body = AcmeApiBody::EMPTY_STRING;
-        let jws = Jws::new_from_parts(private_key.clone(), url, auth, nonce, body);
 
-        let response = acme_client
-            .client()
-            .post(account_id.as_url().clone())
-            .add_rfc_headers()
-            .json(&jws)
-            .send()
-            .await?
-            .extract_nonce(acme_client)
-            .await
-            .handle_response_error()
-            .await?;
+        let response = acme_client.post(url, private_key, auth, body).await?;
 
-        let AccountObject { status, orders, .. } = response.json::<AccountObject>().await?;
+        Ok(response.json().await?)
+    }
+
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub async fn get_account(
+        acme_client: &AcmeClient,
+        account_id: &AccountId,
+        private_key: &Rsa<Private>,
+    ) -> Result<Self> {
+        let public_key = rsa_private_to_rsa_public(private_key)
+            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+
+        let AccountObject { status, orders, .. } =
+            Self::get_account_object(acme_client, account_id, private_key).await?;
 
         if status != AccountStatus::Valid {
             return Err(Error::AccountStatusNoValid(status.to_string()));
@@ -293,7 +279,7 @@ impl Account {
         Ok(Self {
             status,
             id: account_id.clone(),
-            private_key,
+            private_key: private_key.clone(),
             orders,
             jwk_thumbprint,
         })
@@ -302,9 +288,9 @@ impl Account {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn fetch_account_with_private_key(
+    pub async fn get_account_with_private_key(
         acme_client: &AcmeClient,
-        private_key: Rsa<Private>,
+        private_key: &Rsa<Private>,
     ) -> Result<Self> {
         let account_create = AccountCreate {
             only_return_existing: Some(true),
@@ -312,10 +298,9 @@ impl Account {
         };
 
         let account_id =
-            Self::fetch_of_create_account_id(acme_client, private_key.clone(), account_create)
-                .await?;
+            Self::fetch_of_create_account_id(acme_client, private_key, account_create).await?;
 
-        Self::fetch_account(acme_client, &account_id, private_key).await
+        Self::get_account(acme_client, &account_id, private_key).await
     }
 
     // TODO: Account Update

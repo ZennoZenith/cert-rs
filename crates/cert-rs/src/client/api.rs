@@ -59,9 +59,9 @@ pub enum Error {
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
 pub struct AcmeError {
     #[serde(rename = "type")]
-    type_: AcmeErrorType,
-    detail: Box<str>,
-    status: u16,
+    pub type_: AcmeErrorType,
+    pub detail: Box<str>,
+    pub status: u16,
 }
 
 impl fmt::Display for AcmeError {

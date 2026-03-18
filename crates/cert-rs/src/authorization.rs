@@ -1,9 +1,5 @@
 use crate::{
-    AcmeClient, Result,
-    account::Account,
-    api::{AcmeApiBody, RequestBuilderExt as _, ResponseExt as _},
-    authentication::{JwkOrKid, Jws},
-    b64,
+    AcmeClient, Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid, b64,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -56,23 +52,10 @@ impl Authorization {
     ///
     /// TODO: Write error docs
     pub async fn get(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
-        let nonce = &acme_client.nonce().await?;
-
         let auth = JwkOrKid::Kid(account.account_id().clone());
         let body = AcmeApiBody::EMPTY_STRING;
-        let jws = Jws::new_from_parts(account.private_key().clone(), url, auth, nonce, body);
 
-        let response = acme_client
-            .client()
-            .post(url.as_str())
-            .add_rfc_headers()
-            .json(&jws)
-            .send()
-            .await?
-            .extract_nonce(acme_client)
-            .await
-            .handle_response_error()
-            .await?;
+        let response = acme_client.post(url, account.private_key(), auth, body).await?;
 
         let authorization = response.json::<Self>().await?;
         Ok(authorization)

@@ -8,7 +8,6 @@
 #![warn(clippy::perf)]
 #![allow(clippy::multiple_crate_versions)] // FIX:
 
-mod api;
 mod b64;
 mod client;
 mod csr;
@@ -21,6 +20,8 @@ pub mod authorization;
 pub mod challenge;
 pub mod directory;
 pub mod order;
+
+use client::api;
 
 pub use api::{AcmeError, AcmeErrorType};
 pub use client::AcmeClient;
