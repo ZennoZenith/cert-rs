@@ -20,6 +20,7 @@ use cert_rs::{
 use clap::Parser;
 use colored::Colorize;
 use reqwest::Client;
+use tracing_subscriber::EnvFilter;
 use url::Url;
 
 #[derive(Parser, Debug, Clone)]
@@ -61,6 +62,12 @@ fn print_banner() {
 #[allow(clippy::too_many_lines)]
 #[tokio::main]
 async fn main() -> color_eyre::eyre::Result<()> {
+    tracing_subscriber::fmt()
+        .without_time() // For early local development.
+        .with_target(false)
+        .with_env_filter(EnvFilter::from_default_env())
+        .init();
+
     let config = Config::parse();
     // dbg!(&config);
 

@@ -1,3 +1,6 @@
+// Licensed under either of the Apache License, Version 2.0 or the MIT license.
+// See LICENSE-APACHE or LICENSE-MIT for details.
+
 #![deny(clippy::all)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::unwrap_used)]

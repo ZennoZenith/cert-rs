@@ -18,6 +18,9 @@ pub enum Error {
     CertificateUrlNotPresent,
 
     #[error("{0}")]
+    Csr(String),
+
+    #[error("{0}")]
     Unimplemented(String),
 
     #[error("{0}")]

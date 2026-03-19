@@ -1,10 +1,11 @@
-use color_eyre::Result;
 use openssl::{
     hash::MessageDigest,
     pkey::{PKey, Private},
     stack::Stack,
     x509::{X509NameBuilder, X509Req, X509ReqBuilder, extension::SubjectAlternativeName},
 };
+
+use crate::{Error, Result};
 
 /// ```sh
 /// $subject_alt_name = "subjectAltName = DNS:test.com, DNS:*.test.com"
@@ -13,15 +14,19 @@ use openssl::{
 /// ```
 pub fn generate_csr(domain_private_key: &PKey<Private>, domains: &[&str]) -> Result<X509Req> {
     // === Build empty subject (equivalent to "-subj /") ===
-    let name_builder = X509NameBuilder::new()?;
+    let name_builder = X509NameBuilder::new().map_err(|e| Error::Csr(e.to_string()))?;
     // No fields added → empty subject
     let name = name_builder.build();
 
     // === Build CSR ===
-    let mut req_builder = X509ReqBuilder::new()?;
-    req_builder.set_version(0)?;
-    req_builder.set_subject_name(&name)?;
-    req_builder.set_pubkey(domain_private_key)?;
+    let mut req_builder = X509ReqBuilder::new().map_err(|e| Error::Csr(e.to_string()))?;
+    req_builder.set_version(0).map_err(|e| Error::Csr(e.to_string()))?;
+    req_builder
+        .set_subject_name(&name)
+        .map_err(|e| Error::Csr(e.to_string()))?;
+    req_builder
+        .set_pubkey(domain_private_key)
+        .map_err(|e| Error::Csr(e.to_string()))?;
 
     // === Add SAN extension (equivalent to -addext subjectAltName=DNS:... ) ===
     let mut san_ext = SubjectAlternativeName::new();
@@ -29,16 +34,22 @@ pub fn generate_csr(domain_private_key: &PKey<Private>, domains: &[&str]) -> Res
     for domain in domains {
         san_ext.dns(domain);
     }
-    let san_ext = san_ext.build(&req_builder.x509v3_context(None))?;
+    let san_ext = san_ext
+        .build(&req_builder.x509v3_context(None))
+        .map_err(|e| Error::Csr(e.to_string()))?;
 
     // CSR extensions must be put into a stack
-    let mut ext_stack = Stack::new()?;
-    ext_stack.push(san_ext)?;
+    let mut ext_stack = Stack::new().map_err(|e| Error::Csr(e.to_string()))?;
+    ext_stack.push(san_ext).map_err(|e| Error::Csr(e.to_string()))?;
 
-    req_builder.add_extensions(&ext_stack)?;
+    req_builder
+        .add_extensions(&ext_stack)
+        .map_err(|e| Error::Csr(e.to_string()))?;
 
     // === Sign CSR using SHA256 (equivalent to -sha256) ===
-    req_builder.sign(domain_private_key, MessageDigest::sha256())?;
+    req_builder
+        .sign(domain_private_key, MessageDigest::sha256())
+        .map_err(|e| Error::Csr(e.to_string()))?;
 
     let csr: X509Req = req_builder.build();
 
@@ -63,9 +74,9 @@ mod tests {
 
     use super::*;
 
-    const FIXTURE_DOMAIN_KEY_PEM: &str = include_str!("../../../tests/FIXTURE_DOMAIN_KEY.pem");
+    const FIXTURE_DOMAIN_KEY_PEM: &str = include_str!("../tests/FIXTURE_DOMAIN_KEY.pem");
 
-    const FIXTURE_CSR_PEM: &str = include_str!("../../../tests/FIXTURE_CSR.pem");
+    const FIXTURE_CSR_PEM: &str = include_str!("../tests/FIXTURE_CSR.pem");
 
     #[test]
     fn csr_ok() -> Result<()> {

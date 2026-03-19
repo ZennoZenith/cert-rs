@@ -69,7 +69,7 @@ pub struct AccountObject {
     pub external_account_binding: Option<serde_json::Value>,
 
     /// A Url from which a list of orders submitted by this acocount can be fetched
-    pub orders: Url,
+    pub orders: Option<Url>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +79,7 @@ pub struct Account {
     private_key: Rsa<Private>,
 
     /// A Url from which a list of orders submitted by this acocount can be fetched
-    orders: Url,
+    orders: Option<Url>,
 
     /// jwk -> to json -> sha256 hash -> base64url
     jwk_thumbprint: JwkThumbprint,
@@ -92,8 +92,8 @@ impl Account {
     }
 
     #[must_use]
-    pub const fn orders(&self) -> &Url {
-        &self.orders
+    pub const fn orders(&self) -> Option<&Url> {
+        self.orders.as_ref()
     }
 
     #[must_use = "Must use account id"]

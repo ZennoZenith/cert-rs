@@ -362,9 +362,9 @@ mod tests {
 
     use super::*;
 
-    const FIXTURE_PRIVATE_KEY: &str = include_str!("../../../tests/FIXTURE_PRIVATE_KEY.pem");
+    const FIXTURE_PRIVATE_KEY: &str = include_str!("../tests/FIXTURE_PRIVATE_KEY.pem");
 
-    const FIXTURE_PUBLIC_KEY: &str = include_str!("../../../tests/FIXTURE_PUBLIC_KEY.pem");
+    const FIXTURE_PUBLIC_KEY: &str = include_str!("../tests/FIXTURE_PUBLIC_KEY.pem");
 
     #[test]
     fn public_key_from_private_key() {

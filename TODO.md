@@ -1,4 +1,6 @@
 - Correct scoping of modules
+- Better error types
+- Revert Serialize derive where not required
 - Acme Retry-After header
 - tracing support
 - Write documentation from RFC8555

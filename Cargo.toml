@@ -1,38 +1,72 @@
-[workspace]
-members = ["crates/cert-rs", "crates/cert-rs-cli"]
-resolver = "3"
-
-[workspace.package]
+[package]
+name = "cert-rs"
 version = "0.0.1"
-description = ""
+description = "..."
+categories = ["acme"]
 authors = ["Zenno Zenith <95485961+ZennoZenith@users.noreply.github.com>"]
 license = "MIT OR Apache-2.0"
 edition = "2024"
 repository = "https://github.com/ZennoZenith/cert-rs"
 keywords = ["ssl", "letsencrypt", "acme"]
+readme = "README.md"
 
-[workspace.lints.rust]
+[lints.rust]
 unsafe_code = "forbid"
 # unused = { level = "allow", priority = -1 } # For exploratory dev.
 
-# [profile.release]
-# lto = true
-# codegen-units = 1
-# panic = "abort"
-# strip = true
 
-[workspace.dependencies]
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[[example]]
+name = "full"
+path = "examples/full.rs"
+test = true
+
+
+# [[example]]
+# name = "pebble-test"
+# path = "examples/pebble-test/src/main.rs"
+# test = true
+
+# [[test]]
+# name = "pebble"
+
+[dependencies]
+base64 = "0.22"
+chrono = "0.4"
+http = "1"
+mime = "0.3"
+openssl = { version = "0.10", features = ["vendored"] }
+reqwest = { version = "0.13", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_with = { version = "3" }
+sha2 = "0.10"
+strum = "0.28"
+strum_macros = "0.28"
+thiserror = "2"
 tokio = { version = "1", features = [
   "macros",
   "rt",
   "rt-multi-thread",
   "time",
 ] }
+tracing = { version = "0.1", optional = true }
 url = { version = "2", features = ["serde"] }
-strum = "0.28"
-strum_macros = "0.28"
-thiserror = "2"
+
+
+[dev-dependencies]
+clap = { version = "4", features = ["derive"] }
+colored = "3"
 color-eyre = "0.6"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-reqwest = { version = "0.13", features = ["json"] }
+fake = { version = "4" }
+serial_test = "3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[features]
+default = ["tracing"]
+tracing = ["dep:tracing"]
