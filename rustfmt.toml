@@ -7,7 +7,7 @@ tab_spaces = 4
 newline_style = "Unix"
 use_field_init_shorthand = true
 reorder_imports = true
-wrap_comments = true
+# wrap_comments = true
 
 chain_width = 70
 array_width = 70

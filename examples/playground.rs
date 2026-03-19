@@ -4,17 +4,13 @@ use openssl::{
     hash::MessageDigest,
     pkey::PKey,
     stack::Stack,
-    x509::{
-        X509NameBuilder, X509Req, X509ReqBuilder,
-        extension::SubjectAlternativeName,
-    },
+    x509::{X509NameBuilder, X509Req, X509ReqBuilder, extension::SubjectAlternativeName},
 };
 
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    const FIXTURE_DOMAIN_KEY_PEM: &str =
-        include_str!("../tests/FIXTURE_DOMAIN_KEY.pem");
+    const FIXTURE_DOMAIN_KEY_PEM: &str = include_str!("../tests/FIXTURE_DOMAIN_KEY.pem");
     const FIXTURE_CSR_PEM: &str = include_str!("../tests/FIXTURE_CSR.pem");
 
     let pkey = PKey::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM.as_bytes())?;
