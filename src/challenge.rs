@@ -2,8 +2,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    AcmeClient, Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid,
-    time::TimeRfc3339,
+    Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid, time::TimeRfc3339,
 };
 
 // /// ACME clients must ignore unknown challenge types per the spec.
@@ -152,12 +151,15 @@ impl KnownChallenge {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn respond(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
+    pub async fn respond(account: &Account, url: &Url) -> Result<Self> {
         let url = &url;
 
-        let auth = JwkOrKid::Kid(account.kid());
+        let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::EMPTY_OBJECT;
-        let response = acme_client.post(url, account.private_key(), auth, body).await?;
+        let response = account
+            .client
+            .post(url, &account.credentials.private_key, auth, body)
+            .await?;
 
         let challenge = response.json::<Self>().await?;
         Ok(challenge)
@@ -166,12 +168,15 @@ impl KnownChallenge {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn get(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
+    pub async fn get(account: &Account, url: &Url) -> Result<Self> {
         let url = &url;
 
-        let auth = JwkOrKid::Kid(account.kid());
+        let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::EMPTY_STRING;
-        let response = acme_client.post(url, account.private_key(), auth, body).await?;
+        let response = account
+            .client
+            .post(url, &account.credentials.private_key, auth, body)
+            .await?;
 
         let challenge = response.json::<Self>().await?;
         Ok(challenge)

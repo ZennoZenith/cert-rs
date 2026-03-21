@@ -8,7 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap 
 use std::fmt;
 use url::Url;
 
-use crate::AcmeClient;
+use crate::Client;
 
 const ACME_PREFIX: &str = "urn:ietf:params:acme:error:";
 
@@ -227,7 +227,7 @@ impl RequestBuilderExt for RequestBuilder {
 }
 
 pub trait ResponseExt {
-    async fn extract_nonce(self, acme_client: &AcmeClient) -> Self;
+    async fn extract_nonce(self, client: &Client) -> Self;
 
     async fn handle_response_error(self) -> Result<Self>
     where
@@ -235,8 +235,8 @@ pub trait ResponseExt {
 }
 
 impl ResponseExt for Response {
-    async fn extract_nonce(self, acme_client: &AcmeClient) -> Self {
-        acme_client.enqueue_nonce(self.headers()).await;
+    async fn extract_nonce(self, client: &Client) -> Self {
+        client.enqueue_nonce(self.headers()).await;
 
         self
     }

@@ -9,7 +9,7 @@ use sha2::{Digest as _, Sha256};
 use std::{fmt, ops::Deref, str::FromStr};
 use url::Url;
 
-use crate::{api::AcmeApiBody, b64};
+use crate::{Error, Result, api::AcmeApiBody, b64};
 
 /// # Errors
 ///
@@ -28,7 +28,7 @@ pub struct Base64uEncoded<T>(T);
 #[derive(Debug)]
 pub struct Jws<'a, T: Serialize + Clone> {
     /// TODO: Require to create signature (`{protected_b64}.{payload_b64}`)
-    private_key: &'a Rsa<Private>,
+    private_key: &'a PrivateKey,
     protected: Base64uEncoded<JwsProtectedHeaders<'a>>,
     payload: Base64uEncoded<AcmeApiBody<T>>,
     // TODO: Document signature format
@@ -62,7 +62,7 @@ where
         let signing_input = format!("{protected_b64}.{payload_b64}");
 
         // sign
-        let keypair = PKey::from_rsa(self.private_key.clone())
+        let keypair = PKey::from_rsa(self.private_key.rsa_key().clone())
             .map_err(|e| serde::ser::Error::custom(e.to_string()))?;
 
         let mut signer = Signer::new(MessageDigest::sha256(), &keypair)
@@ -91,7 +91,7 @@ where
     T: Serialize + Clone,
 {
     pub const fn new(
-        private_key: &'a Rsa<Private>,
+        private_key: &'a PrivateKey,
         jws_protected_headers: JwsProtectedHeaders<'a>,
         body: AcmeApiBody<T>,
     ) -> Self {
@@ -103,7 +103,7 @@ where
     }
 
     pub const fn new_from_parts(
-        private_key: &'a Rsa<Private>,
+        private_key: &'a PrivateKey,
         url: &'a Url,
         auth: JwkOrKid<'a>,
         nonce: &'a str,
@@ -184,6 +184,51 @@ impl From<Rsa<Public>> for Jwk {
             key_type,
             modulus,
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct PrivateKey(Rsa<Private>);
+
+// TODO: Impl correct serialize
+impl Serialize for PrivateKey {
+    fn serialize<S>(&self, _serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        // serializer.serialize_str("")
+        todo!("Impl correct private key serialize")
+    }
+}
+
+// TODO: Impl correct Deserialize
+impl<'de> serde::de::Deserialize<'de> for PrivateKey {
+    fn deserialize<D>(
+        _deserializer: D,
+    ) -> std::result::Result<Self, <D as serde::Deserializer<'de>>::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        // let temp = String::deserialize(deserializer).map(|v| Self::parse(&v));
+
+        // match temp {
+        //     Ok(v) => v.map_err(|v| serde::de::Error::custom(format!("..."))),
+        //     Err(e) => Err(e),
+        // }
+
+        todo!("Impl correct private key deserialize")
+    }
+}
+
+impl PrivateKey {
+    pub const fn rsa_key(&self) -> &Rsa<Private> {
+        &self.0
+    }
+
+    pub fn new() -> Result<Self> {
+        // TODO: could this be created without throwing error?
+        let private_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
+        Ok(Self(private_key))
     }
 }
 
@@ -420,8 +465,10 @@ mod tests {
 
     #[test]
     fn serialize_jws() {
-        let private_key = Rsa::private_key_from_pem(FIXTURE_PRIVATE_KEY.as_bytes())
-            .expect("Cannot parse Rsa Private key from fixture");
+        let private_key = PrivateKey(
+            Rsa::private_key_from_pem(FIXTURE_PRIVATE_KEY.as_bytes())
+                .expect("Cannot parse Rsa Private key from fixture"),
+        );
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
             url: &Url::from_str("https://example.com").expect("Invalid url"),

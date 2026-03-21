@@ -1,5 +1,4 @@
 use http::HeaderMap;
-use openssl::{pkey::Private, rsa::Rsa};
 use reqwest::Response;
 use serde::Serialize;
 use std::collections::VecDeque;
@@ -7,31 +6,34 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use crate::{
-    AcmeError,
-    authentication::{JwkOrKid, Jws},
+    AcmeError, AcmeErrorType,
+    authentication::{JwkOrKid, Jws, PrivateKey},
     directory::Directory,
 };
 
-use api::{AcmeApiBody, Error, RequestBuilderExt as _, ResponseExt as _, Result};
-
-pub mod api;
+use crate::api::{AcmeApiBody, Error, RequestBuilderExt as _, ResponseExt as _, Result};
 
 const MAX_NONCE_STORE_CAPACITY: usize = 100;
 const MAX_NONCE_RETRIES: usize = 10;
 const NONCE_RETRIES_DURATION_MS: u64 = 500;
 
-pub struct AcmeClient {
-    reqwest_client: reqwest::Client,
-    directory: Directory,
+#[derive(Debug)]
+pub struct Client {
+    pub(crate) directory: Directory,
+    pub(crate) directory_url: Url,
+
+    #[allow(clippy::struct_field_names)]
+    client: reqwest::Client,
     nonce_store: Mutex<VecDeque<Box<str>>>,
 }
 
-impl AcmeClient {
+impl Client {
     #[must_use]
-    pub fn new(reqwest_client: reqwest::Client, directory: Directory) -> Self {
+    pub fn new(client: reqwest::Client, directory: Directory, directory_url: Url) -> Self {
         Self {
-            reqwest_client,
+            client,
             directory,
+            directory_url,
             nonce_store: Mutex::new(VecDeque::with_capacity(MAX_NONCE_STORE_CAPACITY)),
         }
     }
@@ -54,7 +56,7 @@ impl AcmeClient {
             .map(Box::from)
     }
 
-    async fn enqueue_nonce(&self, headers: &HeaderMap) {
+    pub(crate) async fn enqueue_nonce(&self, headers: &HeaderMap) {
         let Some(nonce) = Self::extract_nonce(headers) else {
             #[cfg(feature = "tracing")]
             tracing::warn!("replay-nonce header not found in request");
@@ -79,7 +81,7 @@ impl AcmeClient {
         }
 
         let response = self
-            .reqwest_client
+            .client
             .head(self.directory.new_nonce.as_str())
             .add_rfc_headers()
             .send()
@@ -96,7 +98,7 @@ impl AcmeClient {
     pub async fn post<T: Clone + Serialize>(
         &self,
         url: &Url,
-        private_key: &Rsa<Private>,
+        private_key: &PrivateKey,
         auth: JwkOrKid<'_>,
         body: AcmeApiBody<T>,
     ) -> Result<Response> {
@@ -108,7 +110,7 @@ impl AcmeClient {
                 Jws::new_from_parts(private_key, url, auth.clone(), nonce.as_ref(), body.clone());
 
             let maybe_response = self
-                .reqwest_client
+                .client
                 .post(url.as_str())
                 .add_rfc_headers()
                 .json(&jws)
@@ -121,7 +123,7 @@ impl AcmeClient {
 
             match maybe_response {
                 Err(Error::AcmeError(AcmeError {
-                    type_: api::AcmeErrorType::BadNonce,
+                    type_: AcmeErrorType::BadNonce,
                     ..
                 })) => {
                     println!("Bad nonce. retrying... {}", i + 1);

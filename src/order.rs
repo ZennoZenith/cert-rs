@@ -1,5 +1,5 @@
 use crate::{
-    AcmeClient, AcmeError, Error, Result,
+    AcmeError, Error, Result,
     account::Account,
     api::{AcmeApiBody, extract_location_header},
     authentication::JwkOrKid,
@@ -97,19 +97,18 @@ impl Order {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn create(
-        acme_client: &AcmeClient,
-        account: &Account,
-        domains: Vec<String>,
-    ) -> Result<(Url, Self)> {
-        let url = &acme_client.directory().new_order;
+    pub async fn create(account: &Account, domains: Vec<String>) -> Result<(Url, Self)> {
+        let url = &account.client.directory().new_order;
 
         let identifiers: Vec<Identifier> = domains.iter().map(Into::into).collect();
 
-        let auth = JwkOrKid::Kid(account.kid());
+        let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::Other(serde_json::json!({"identifiers":identifiers}));
 
-        let response = acme_client.post(url, account.private_key(), auth, body).await?;
+        let response = account
+            .client
+            .post(url, &account.credentials.private_key, auth, body)
+            .await?;
 
         let order_url: Url = extract_location_header(response.headers())?;
         let order = response.json::<Self>().await?;
@@ -120,17 +119,16 @@ impl Order {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn status(
-        acme_client: &AcmeClient,
-        account: &Account,
-        order_url: &Url,
-    ) -> Result<Self> {
+    pub async fn status(account: &Account, order_url: &Url) -> Result<Self> {
         let url = order_url;
 
-        let auth = JwkOrKid::Kid(account.kid());
+        let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::EMPTY_STRING;
 
-        let response = acme_client.post(url, account.private_key(), auth, body).await?;
+        let response = account
+            .client
+            .post(url, &account.credentials.private_key, auth, body)
+            .await?;
 
         let order = response.json::<Self>().await?;
 
@@ -142,7 +140,7 @@ impl Order {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn finalize(&self, acme_client: &AcmeClient, account: &Account) -> Result<X509Req> {
+    pub async fn finalize(&self, account: &Account) -> Result<X509Req> {
         let domain_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
         let domain_private_key =
             PKey::from_rsa(domain_key).map_err(|e| Error::Unimplemented(e.to_string()))?;
@@ -155,10 +153,13 @@ impl Order {
 
         let url = &self.finalize;
 
-        let auth = JwkOrKid::Kid(account.kid());
+        let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::Other(serde_json::json!({"csr":csr_der_encoded }));
 
-        let response = acme_client.post(url, account.private_key(), auth, body).await?;
+        let response = account
+            .client
+            .post(url, &account.credentials.private_key, auth, body)
+            .await?;
 
         let finiazlize = response.json::<Self>().await?;
         dbg!(finiazlize);
@@ -169,20 +170,19 @@ impl Order {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn download_cert(
-        &self,
-        acme_client: &AcmeClient,
-        account: &Account,
-    ) -> Result<String> {
+    pub async fn download_cert(&self, account: &Account) -> Result<String> {
         let Some(url) = &self.certificate else {
             return Err(Error::CertificateUrlNotPresent);
         };
 
-        let auth = JwkOrKid::Kid(account.kid());
+        let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::EMPTY_STRING;
 
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
-        let response = acme_client.post(url, account.private_key(), auth, body).await?;
+        let response = account
+            .client
+            .post(url, &account.credentials.private_key, auth, body)
+            .await?;
         // response "content-type": "application/pem-certificate-chain; charset=utf-8",
 
         let cert = response.text().await?;

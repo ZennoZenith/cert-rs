@@ -10,7 +10,7 @@
 // #![allow(dead_code)] // FIX: For exploratory dev.
 
 use cert_rs::{
-    AcmeClient, Error,
+    Client, DirectoryUrl, Error, LetsEncrypt,
     account::{Account, NewAccount},
     authorization::Authorization,
     challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
@@ -19,7 +19,6 @@ use cert_rs::{
 };
 use clap::Parser;
 use colored::Colorize;
-use reqwest::Client;
 use tracing_subscriber::EnvFilter;
 use url::Url;
 
@@ -73,17 +72,23 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     print_banner();
 
-    let client = Client::builder()
+    let client = reqwest::Client::builder()
         .danger_accept_invalid_certs(config.insecure)
         .build()?;
 
-    let directory = match config.url {
-        Some(url) => Directory::new_from_url_with_client(&client, url).await?,
-        None => Directory::lets_encrypt_staging().await?,
+    let (directory, directory_url) = match config.url {
+        Some(url) => (
+            Directory::new_from_url_with_client(&client, &url).await?,
+            url,
+        ),
+        None => (
+            Directory::lets_encrypt_staging().await?,
+            Url::parse(LetsEncrypt::Staging.directory_url())?,
+        ),
     };
     // dbg!(&directory);
 
-    let acme_client = AcmeClient::new(client, directory);
+    let client = Client::new(client, directory, directory_url);
 
     let account_create = NewAccount {
         terms_of_service_agreed: Some(true),
@@ -92,19 +97,19 @@ async fn main() -> color_eyre::eyre::Result<()> {
         ..Default::default()
     };
 
-    let account = Account::create(&acme_client, account_create).await?;
+    let account = Account::create(client, account_create).await?;
     // dbg!(&account);
 
     let domains: Vec<String> =
         vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];
 
-    let (order_url, _order) = Order::create(&acme_client, &account, domains).await?;
+    let (order_url, _order) = Order::create(&account, domains).await?;
 
-    let order = Order::status(&acme_client, &account, &order_url).await?;
+    let order = Order::status(&account, &order_url).await?;
 
     let mut challenge_urls = vec![];
     for authz_url in order.authorizations {
-        let authorization = Authorization::get(&acme_client, &account, &authz_url).await?;
+        let authorization = Authorization::get(&account, &authz_url).await?;
 
         let wildcard = authorization.wildcard.unwrap_or(false);
 
@@ -144,12 +149,12 @@ async fn main() -> color_eyre::eyre::Result<()> {
     tokio::time::sleep(std::time::Duration::from_secs(3)).await;
 
     for challenge_url in &challenge_urls {
-        let challenge = KnownChallenge::respond(&acme_client, &account, challenge_url).await?;
+        let challenge = KnownChallenge::respond(&account, challenge_url).await?;
         dbg!(challenge);
     }
 
     let order = loop {
-        let order = Order::status(&acme_client, &account, &order_url).await?;
+        let order = Order::status(&account, &order_url).await?;
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
         match order.status {
             OrderStatus::Pending | OrderStatus::Processing => {
@@ -164,13 +169,13 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     dbg!(&order);
 
-    let csr = order.finalize(&acme_client, &account).await?;
+    let csr = order.finalize(&account).await?;
     let csr_pem = csr.to_pem().map(|v| String::from_utf8_lossy(&v).into_owned())?;
     println!("CSR PEM:\n{csr_pem}");
 
     let cert = loop {
-        let order = Order::status(&acme_client, &account, &order_url).await?;
-        match order.download_cert(&acme_client, &account).await {
+        let order = Order::status(&account, &order_url).await?;
+        match order.download_cert(&account).await {
             Ok(cert) => break cert,
             Err(e @ Error::CertificateUrlNotPresent) => {
                 println!("{e}. trying again.");

@@ -8,6 +8,9 @@ pub enum Error {
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
+    #[error(transparent)]
+    Url(#[from] url::ParseError),
+
     #[error("{0}")]
     DirectoryParse(String),
 

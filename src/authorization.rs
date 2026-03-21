@@ -1,6 +1,4 @@
-use crate::{
-    AcmeClient, Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid, b64,
-};
+use crate::{Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid, b64};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use url::Url;
@@ -50,11 +48,14 @@ impl Authorization {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn get(acme_client: &AcmeClient, account: &Account, url: &Url) -> Result<Self> {
-        let auth = JwkOrKid::Kid(account.kid());
+    pub async fn get(account: &Account, url: &Url) -> Result<Self> {
+        let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::EMPTY_STRING;
 
-        let response = acme_client.post(url, account.private_key(), auth, body).await?;
+        let response = account
+            .client
+            .post(url, &account.credentials.private_key, auth, body)
+            .await?;
 
         let authorization = response.json::<Self>().await?;
         Ok(authorization)

@@ -1,4 +1,3 @@
-use reqwest::IntoUrl;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -6,6 +5,10 @@ use crate::{
     Error, Result,
     api::{RequestBuilderExt, ResponseExt as _},
 };
+
+pub trait DirectoryUrl {
+    fn directory_url(&self) -> &'static str;
+}
 
 /// ACME directory object.
 ///
@@ -40,18 +43,12 @@ pub struct DirectoryMeta {
 }
 
 impl Directory {
-    const LETS_ENCRYPT_URL: &str = "https://acme-v02.api.letsencrypt.org/directory";
-    const LETS_ENCRYPT_STAGING_URL: &str = "https://acme-staging-v02.api.letsencrypt.org/directory";
-
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn new_from_url_with_client<T: IntoUrl>(
-        client: &reqwest::Client,
-        url: T,
-    ) -> Result<Self> {
+    pub async fn new_from_url_with_client(client: &reqwest::Client, url: &Url) -> Result<Self> {
         let response = client
-            .get(url)
+            .get(url.as_str())
             .add_rfc_headers()
             .send()
             .await?
@@ -67,9 +64,9 @@ impl Directory {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn new_from_url<T: IntoUrl>(url: T) -> Result<Self> {
+    pub async fn new_from_url(url: &Url) -> Result<Self> {
         let response = reqwest::Client::new()
-            .get(url)
+            .get(url.as_str())
             .add_rfc_headers()
             .send()
             .await?
@@ -93,14 +90,24 @@ impl Directory {
     ///
     /// TODO: Write error docs
     pub async fn lets_encrypt() -> Result<Self> {
-        Self::new_from_url(Self::LETS_ENCRYPT_URL).await
+        let url = Url::parse(LetsEncrypt::Production.directory_url())?;
+        Self::new_from_url(&url).await
     }
 
     /// # Errors
     ///
     /// TODO: Write error docs
     pub async fn lets_encrypt_staging() -> Result<Self> {
-        Self::new_from_url(Self::LETS_ENCRYPT_STAGING_URL).await
+        let url = Url::parse(LetsEncrypt::Staging.directory_url())?;
+        Self::new_from_url(&url).await
+    }
+
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub async fn zero_ssl() -> Result<Self> {
+        let url = Url::parse(ZeroSsl::Production.directory_url())?;
+        Self::new_from_url(&url).await
     }
 }
 
@@ -118,6 +125,37 @@ impl Directory {
     #[must_use]
     pub fn external_account_required(&self) -> Option<bool> {
         self.meta.as_ref().map(|v| v.external_account_required)?
+    }
+}
+
+/// Helper type to reference Let's Encrypt server URLs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum LetsEncrypt {
+    Production,
+    Staging,
+}
+
+impl DirectoryUrl for LetsEncrypt {
+    fn directory_url(&self) -> &'static str {
+        match self {
+            Self::Production => "https://acme-v02.api.letsencrypt.org/directory",
+            Self::Staging => "https://acme-staging-v02.api.letsencrypt.org/directory",
+        }
+    }
+}
+
+/// ``ZeroSSL`` ACME only supports production at the moment
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub enum ZeroSsl {
+    Production,
+}
+
+impl DirectoryUrl for ZeroSsl {
+    fn directory_url(&self) -> &'static str {
+        match self {
+            Self::Production => "https://acme.zerossl.com/v2/DV90",
+        }
     }
 }
 

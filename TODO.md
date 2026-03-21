@@ -1,3 +1,6 @@
+# TODO
+
+- Profiles Meta
 - Correct scoping of modules
 - Better error types
 - Revert Serialize derive where not required

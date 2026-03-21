@@ -11,6 +11,7 @@
 #![warn(clippy::perf)]
 #![allow(clippy::multiple_crate_versions)] // FIX:
 
+mod api;
 mod authentication;
 mod b64;
 mod client;
@@ -24,8 +25,7 @@ pub mod challenge;
 pub mod directory;
 pub mod order;
 
-use client::api;
-
 pub use api::{AcmeError, AcmeErrorType};
-pub use client::AcmeClient;
+pub use client::Client;
+pub use directory::{DirectoryUrl, LetsEncrypt, ZeroSsl};
 pub use error::{Error, Result};
