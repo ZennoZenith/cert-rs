@@ -15,14 +15,14 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Directory {
-    pub(crate) new_nonce: Url,
-    pub(crate) new_account: Url,
-    pub(crate) new_order: Url,
-    pub(crate) revoke_cert: Url,
-    pub(crate) key_change: Url,
+    pub new_nonce: Url,
+    pub new_account: Url,
+    pub new_order: Url,
+    pub revoke_cert: Url,
+    pub key_change: Url,
 
-    pub(crate) new_authz: Option<Url>,
-    pub(crate) meta: Option<DirectoryMeta>,
+    pub new_authz: Option<Url>,
+    pub meta: Option<DirectoryMeta>,
 }
 
 /// ACME Directory Metadata Fields.
@@ -33,10 +33,10 @@ pub struct Directory {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryMeta {
-    pub(crate) terms_of_service: Option<String>,
-    pub(crate) website: Option<String>,
-    pub(crate) caa_identities: Option<Vec<String>>,
-    pub(crate) external_account_required: Option<bool>,
+    pub terms_of_service: Option<String>,
+    pub website: Option<String>,
+    pub caa_identities: Option<Vec<String>>,
+    pub external_account_required: Option<bool>,
 }
 
 impl Directory {
