@@ -6,12 +6,14 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use crate::{
-    AcmeError, AcmeErrorType,
+    AcmeError, AcmeErrorType, Result,
     authentication::{JwkOrKid, Jws, PrivateKey},
     directory::Directory,
 };
 
-use crate::api::{AcmeApiBody, Error, RequestBuilderExt as _, ResponseExt as _, Result};
+use crate::api::{
+    AcmeApiBody, Error as ApiError, RequestBuilderExt as _, ResponseExt as _, Result as ApiResult,
+};
 
 const MAX_NONCE_STORE_CAPACITY: usize = 100;
 const MAX_NONCE_RETRIES: usize = 10;
@@ -28,20 +30,19 @@ pub struct Client {
 }
 
 impl Client {
-    #[must_use]
-    pub fn new(client: reqwest::Client, directory: Directory, directory_url: Url) -> Self {
-        Self {
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub async fn new(client: reqwest::Client, directory_url: Url) -> Result<Self> {
+        let directory = Directory::new_from_url_with_client(&client, &directory_url).await?;
+
+        Ok(Self {
             client,
             directory,
             directory_url,
             nonce_store: Mutex::new(VecDeque::with_capacity(MAX_NONCE_STORE_CAPACITY)),
-        }
+        })
     }
-
-    // #[must_use]
-    // pub const fn client(&self) -> &Client {
-    //     &self.reqwest_client
-    // }
 
     #[must_use]
     pub const fn directory(&self) -> &Directory {
@@ -73,7 +74,7 @@ impl Client {
         self.nonce_store.lock().await.push_back(nonce);
     }
 
-    async fn nonce(&self) -> Result<Box<str>> {
+    async fn nonce(&self) -> ApiResult<Box<str>> {
         let value = self.nonce_store.lock().await.pop_front();
 
         if let Some(nonce) = value {
@@ -89,19 +90,16 @@ impl Client {
 
         let headers = response.headers();
 
-        Self::extract_nonce(headers).ok_or(Error::MissingHeaderName("replay-nonce"))
+        Self::extract_nonce(headers).ok_or(ApiError::MissingHeaderName("replay-nonce"))
     }
 
-    /// # Errors
-    ///
-    /// TODO: Write error docs
-    pub async fn post<T: Clone + fmt::Debug + Serialize>(
+    pub(crate) async fn post<T: Clone + fmt::Debug + Serialize>(
         &self,
         url: &Url,
         private_key: &PrivateKey,
         auth: JwkOrKid<'_>,
         body: AcmeApiBody<T>,
-    ) -> Result<Response> {
+    ) -> ApiResult<Response> {
         for i in 0..MAX_NONCE_RETRIES {
             let nonce = self.nonce().await?;
 
@@ -122,7 +120,7 @@ impl Client {
                 .await;
 
             match maybe_response {
-                Err(Error::AcmeError(AcmeError {
+                Err(ApiError::AcmeError(AcmeError {
                     type_: AcmeErrorType::BadNonce,
                     ..
                 })) => {
@@ -136,6 +134,6 @@ impl Client {
         }
 
         println!("Could not get nonce after max({MAX_NONCE_RETRIES}) retries");
-        Err(Error::MaxNonceRetry(MAX_NONCE_RETRIES))
+        Err(ApiError::MaxNonceRetry(MAX_NONCE_RETRIES))
     }
 }

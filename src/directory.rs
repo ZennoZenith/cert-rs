@@ -6,10 +6,6 @@ use crate::{
     api::{RequestBuilderExt, ResponseExt as _},
 };
 
-pub trait DirectoryUrl {
-    fn directory_url(&self) -> &'static str;
-}
-
 /// ACME directory object.
 ///
 /// Defined in [RFC 8555 §7.1.1].
@@ -90,24 +86,21 @@ impl Directory {
     ///
     /// TODO: Write error docs
     pub async fn lets_encrypt() -> Result<Self> {
-        let url = Url::parse(LetsEncrypt::Production.directory_url())?;
-        Self::new_from_url(&url).await
+        Self::new_from_url(&Url::try_from(LetsEncrypt::Production)?).await
     }
 
     /// # Errors
     ///
     /// TODO: Write error docs
     pub async fn lets_encrypt_staging() -> Result<Self> {
-        let url = Url::parse(LetsEncrypt::Staging.directory_url())?;
-        Self::new_from_url(&url).await
+        Self::new_from_url(&Url::try_from(LetsEncrypt::Staging)?).await
     }
 
     /// # Errors
     ///
     /// TODO: Write error docs
     pub async fn zero_ssl() -> Result<Self> {
-        let url = Url::parse(ZeroSsl::Production.directory_url())?;
-        Self::new_from_url(&url).await
+        Self::new_from_url(&Url::try_from(ZeroSsl::Production)?).await
     }
 }
 
@@ -135,11 +128,15 @@ pub enum LetsEncrypt {
     Staging,
 }
 
-impl DirectoryUrl for LetsEncrypt {
-    fn directory_url(&self) -> &'static str {
-        match self {
-            Self::Production => "https://acme-v02.api.letsencrypt.org/directory",
-            Self::Staging => "https://acme-staging-v02.api.letsencrypt.org/directory",
+impl TryFrom<LetsEncrypt> for Url {
+    type Error = url::ParseError;
+
+    fn try_from(value: LetsEncrypt) -> std::result::Result<Self, Self::Error> {
+        match value {
+            LetsEncrypt::Production => "https://acme-v02.api.letsencrypt.org/directory".parse(),
+            LetsEncrypt::Staging => {
+                "https://acme-staging-v02.api.letsencrypt.org/directory".parse()
+            }
         }
     }
 }
@@ -151,10 +148,12 @@ pub enum ZeroSsl {
     Production,
 }
 
-impl DirectoryUrl for ZeroSsl {
-    fn directory_url(&self) -> &'static str {
-        match self {
-            Self::Production => "https://acme.zerossl.com/v2/DV90",
+impl TryFrom<ZeroSsl> for Url {
+    type Error = url::ParseError;
+
+    fn try_from(value: ZeroSsl) -> std::result::Result<Self, Self::Error> {
+        match value {
+            ZeroSsl::Production => "https://acme.zerossl.com/v2/DV90".parse(),
         }
     }
 }

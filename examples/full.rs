@@ -10,11 +10,10 @@
 // #![allow(dead_code)] // FIX: For exploratory dev.
 
 use cert_rs::{
-    Client, DirectoryUrl, Error, LetsEncrypt,
+    Client, Error, LetsEncrypt,
     account::{Account, NewAccount},
     authorization::Authorization,
     challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
-    directory::Directory,
     order::{Order, OrderStatus},
 };
 use clap::Parser;
@@ -75,19 +74,13 @@ async fn main() -> color_eyre::eyre::Result<()> {
         .danger_accept_invalid_certs(config.insecure)
         .build()?;
 
-    let (directory, directory_url) = match config.url {
-        Some(url) => (
-            Directory::new_from_url_with_client(&client, &url).await?,
-            url,
-        ),
-        None => (
-            Directory::lets_encrypt_staging().await?,
-            Url::parse(LetsEncrypt::Staging.directory_url())?,
-        ),
-    };
+    let directory_url = config.url.unwrap_or_else(|| {
+        #[allow(clippy::expect_used)]
+        Url::try_from(LetsEncrypt::Staging).expect("NOT A URL")
+    });
     // dbg!(&directory);
 
-    let client = Client::new(client, directory, directory_url);
+    let client = Client::new(client, directory_url).await?;
 
     let account_create = NewAccount {
         terms_of_service_agreed: Some(true),

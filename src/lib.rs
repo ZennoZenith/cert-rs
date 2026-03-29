@@ -27,5 +27,5 @@ pub mod order;
 
 pub use api::{AcmeError, AcmeErrorType};
 pub use client::Client;
-pub use directory::{DirectoryUrl, LetsEncrypt, ZeroSsl};
+pub use directory::{LetsEncrypt, ZeroSsl};
 pub use error::{Error, Result};

@@ -94,24 +94,25 @@ pub struct AccountCredentials {
 #[derive(Debug, Clone)]
 pub struct Account {
     pub(crate) client: Arc<Client>,
-    pub(crate) status: AccountStatus,
     pub(crate) credentials: AccountCredentials,
-    pub(crate) orders: Option<Url>,
 
     /// jwk -> to json -> sha256 hash -> base64url
-    pub(crate) jwk_thumbprint: JwkThumbprint,
+    jwk_thumbprint: JwkThumbprint,
+    // pub(crate) status: AccountStatus,
+    // pub(crate) orders: Option<Url>,
 }
 
 impl Account {
-    #[must_use]
-    pub const fn status(&self) -> AccountStatus {
-        self.status
-    }
+    // #[must_use]
+    // pub const fn status(&self) -> AccountStatus {
+    //     self.status
+    // }
 
-    #[must_use]
-    pub const fn orders(&self) -> Option<&Url> {
-        self.orders.as_ref()
-    }
+    // TODO: Fetch order url if acme account uri
+    // #[must_use]
+    // pub const fn orders(&self) -> Option<&Url> {
+    //     self.orders.as_ref()
+    // }
 
     #[must_use]
     pub fn jwk_thumbprint(&self) -> &str {
@@ -135,7 +136,8 @@ impl Account {
         #[derive(Deserialize)]
         struct IntermidiateAccount {
             status: AccountStatus,
-            orders: Option<Url>,
+            #[serde(rename = "orders")]
+            _orders: Option<Url>,
         }
 
         let url = &client.directory.new_account;
@@ -167,13 +169,13 @@ impl Account {
 
         Ok(Self {
             client: Arc::new(client),
-            status: intermediate_account.status,
+            // status: intermediate_account.status,
+            // orders: intermediate_account.orders,
             credentials: AccountCredentials {
                 kid,
                 private_key: private_key.clone(),
                 directory_url,
             },
-            orders: intermediate_account.orders,
             jwk_thumbprint,
         })
     }
