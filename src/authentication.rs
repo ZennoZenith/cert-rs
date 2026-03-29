@@ -26,7 +26,7 @@ pub fn rsa_private_to_rsa_public(
 pub struct Base64uEncoded<T>(T);
 
 #[derive(Debug)]
-pub struct Jws<'a, T: Serialize + Clone> {
+pub struct Jws<'a, T: Serialize + Clone + fmt::Debug> {
     /// TODO: Require to create signature (`{protected_b64}.{payload_b64}`)
     private_key: &'a PrivateKey,
     protected: Base64uEncoded<JwsProtectedHeaders<'a>>,
@@ -37,7 +37,7 @@ pub struct Jws<'a, T: Serialize + Clone> {
 
 impl<T> Serialize for Jws<'_, T>
 where
-    T: Serialize + Clone,
+    T: Serialize + Clone + fmt::Debug,
 {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -88,7 +88,7 @@ where
 
 impl<'a, T> Jws<'a, T>
 where
-    T: Serialize + Clone,
+    T: Serialize + Clone + fmt::Debug,
 {
     pub const fn new(
         private_key: &'a PrivateKey,

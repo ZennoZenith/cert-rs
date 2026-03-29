@@ -66,7 +66,6 @@ async fn main() -> color_eyre::eyre::Result<()> {
         .with_target(false)
         .with_env_filter(EnvFilter::from_default_env())
         .init();
-
     let config = Config::parse();
     // dbg!(&config);
 

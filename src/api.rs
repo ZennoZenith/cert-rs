@@ -285,7 +285,10 @@ impl ResponseExt for Response {
 }
 
 #[derive(Debug, Clone)]
-pub enum AcmeApiBody<T: Serialize = ()> {
+pub enum AcmeApiBody<T = ()>
+where
+    T: Serialize + fmt::Debug,
+{
     EmptyString,
     EmptyObject,
     Other(T),
@@ -298,7 +301,7 @@ impl AcmeApiBody<()> {
 
 impl<T> Serialize for AcmeApiBody<T>
 where
-    T: Serialize + Clone,
+    T: Serialize + fmt::Debug + Clone,
 {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -352,7 +355,7 @@ mod tests {
 
     #[test]
     fn serialize_other_struct() {
-        #[derive(Serialize, Clone)]
+        #[derive(Serialize, Debug, Clone)]
         struct Payload {
             a: u32,
             b: &'static str,

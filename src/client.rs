@@ -1,7 +1,7 @@
 use http::HeaderMap;
 use reqwest::Response;
 use serde::Serialize;
-use std::collections::VecDeque;
+use std::{collections::VecDeque, fmt};
 use tokio::sync::Mutex;
 use url::Url;
 
@@ -95,7 +95,7 @@ impl Client {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn post<T: Clone + Serialize>(
+    pub async fn post<T: Clone + fmt::Debug + Serialize>(
         &self,
         url: &Url,
         private_key: &PrivateKey,
