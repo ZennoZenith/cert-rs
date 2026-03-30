@@ -78,9 +78,9 @@ async fn main() -> color_eyre::eyre::Result<()> {
         #[allow(clippy::expect_used)]
         Url::try_from(LetsEncrypt::Staging).expect("NOT A URL")
     });
-    // dbg!(&directory);
 
     let client = Client::new(client, directory_url).await?;
+    // dbg!(&client.directory());
 
     let account_create = NewAccount {
         terms_of_service_agreed: Some(true),
@@ -90,7 +90,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
     };
 
     let account = Account::create(client, account_create).await?;
-    // dbg!(&account);
+    println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
 
     let domains: Vec<String> =
         vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];

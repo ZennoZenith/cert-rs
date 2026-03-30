@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, de, ser::SerializeStruct as _};
 use url::Url;
 
 use crate::{
@@ -82,22 +82,95 @@ pub struct AccountObject {
 /// the account credentials to a file or secret manager and restore the
 /// account from persistent storage.
 #[must_use]
-#[derive(Debug, Clone, Deserialize, Serialize)]
+#[derive(Debug, Clone)]
 pub struct AccountCredentials {
     pub(crate) kid: Kid,
 
     /// The account's private key
     pub(crate) private_key: PrivateKey,
     pub(crate) directory_url: Url,
+
+    /// jwk -> to json -> sha256 hash -> base64url
+    pub(crate) jwk_thumbprint: JwkThumbprint,
+}
+
+impl Serialize for AccountCredentials {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut state = serializer.serialize_struct("AccountCredentials", 4)?;
+
+        state.serialize_field("kid", &self.kid)?;
+        state.serialize_field("private_key", &self.private_key)?;
+        state.serialize_field("directory_url", &self.directory_url)?;
+        state.serialize_field("jwk_thumbprint", &self.jwk_thumbprint)?;
+
+        state.end()
+    }
+}
+
+impl<'de> serde::de::Deserialize<'de> for AccountCredentials {
+    fn deserialize<D>(
+        deserializer: D,
+    ) -> std::result::Result<Self, <D as serde::Deserializer<'de>>::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        struct Helper {
+            kid: Kid,
+            private_key: PrivateKey, // base64-encoded DER
+            directory_url: Url,
+        }
+
+        let Helper {
+            kid,
+            private_key,
+            directory_url,
+        } = Helper::deserialize(deserializer)?;
+
+        let public_key =
+            rsa_private_to_rsa_public(private_key.rsa_key()).map_err(de::Error::custom)?;
+
+        let jwk_thumbprint = public_key.into();
+
+        Ok(Self {
+            kid,
+            private_key,
+            directory_url,
+            jwk_thumbprint,
+        })
+    }
+}
+
+impl AccountCredentials {
+    #[must_use]
+    pub fn jwk_thumbprint(&self) -> &str {
+        &self.jwk_thumbprint
+    }
+
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub fn load_from_parts(directory_url: Url, kid: Kid, private_key: PrivateKey) -> Result<Self> {
+        let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
+            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let jwk_thumbprint = public_key.into();
+
+        Ok(Self {
+            kid,
+            private_key,
+            directory_url,
+            jwk_thumbprint,
+        })
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Account {
     pub(crate) client: Arc<Client>,
     pub(crate) credentials: AccountCredentials,
-
-    /// jwk -> to json -> sha256 hash -> base64url
-    jwk_thumbprint: JwkThumbprint,
     // pub(crate) status: AccountStatus,
     // pub(crate) orders: Option<Url>,
 }
@@ -114,9 +187,34 @@ impl Account {
     //     self.orders.as_ref()
     // }
 
+    pub fn load(client: Client, credentials: AccountCredentials) -> Self {
+        if client.directory_url != credentials.directory_url {
+            // TODO: add directory url in warn
+            #[cfg(feature = "tracing")]
+            tracing::warn!("Client and Credentials Directory Url do not match");
+
+            dbg!("Client and Credentials Directory Url do not match");
+        }
+
+        Self {
+            client: Arc::from(client),
+            credentials,
+        }
+    }
+
+    #[must_use]
+    pub fn check(&self) -> bool {
+        // TODO: check if current account object status is valid
+        unimplemented!("check if current account object status is valid")
+    }
+
+    pub const fn credentials(&self) -> &AccountCredentials {
+        &self.credentials
+    }
+
     #[must_use]
     pub fn jwk_thumbprint(&self) -> &str {
-        &self.jwk_thumbprint
+        &self.credentials.jwk_thumbprint
     }
 
     /// # Errors
@@ -175,8 +273,8 @@ impl Account {
                 kid,
                 private_key: private_key.clone(),
                 directory_url,
+                jwk_thumbprint,
             },
-            jwk_thumbprint,
         })
     }
 

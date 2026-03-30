@@ -4,7 +4,7 @@ use openssl::{
     rsa::Rsa,
     sign::Signer,
 };
-use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct as _};
+use serde::{Deserialize, Serialize, Serializer, de, ser::SerializeStruct as _};
 use sha2::{Digest as _, Sha256};
 use std::{fmt, ops::Deref, str::FromStr};
 use url::Url;
@@ -190,33 +190,29 @@ impl From<Rsa<Public>> for Jwk {
 #[derive(Debug, Clone)]
 pub struct PrivateKey(Rsa<Private>);
 
-// TODO: Impl correct serialize
 impl Serialize for PrivateKey {
-    fn serialize<S>(&self, _serializer: S) -> std::result::Result<S::Ok, S::Error>
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // serializer.serialize_str("")
-        todo!("Impl correct private key serialize")
+        let pem = self.to_pkcs8_der_base64().map_err(serde::ser::Error::custom)?;
+
+        serializer.serialize_str(&pem)
     }
 }
 
-// TODO: Impl correct Deserialize
 impl<'de> serde::de::Deserialize<'de> for PrivateKey {
     fn deserialize<D>(
-        _deserializer: D,
+        deserializer: D,
     ) -> std::result::Result<Self, <D as serde::Deserializer<'de>>::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        // let temp = String::deserialize(deserializer).map(|v| Self::parse(&v));
+        let private_key = String::deserialize(deserializer)?; // base64url PKCS#8 DER
 
-        // match temp {
-        //     Ok(v) => v.map_err(|v| serde::de::Error::custom(format!("..."))),
-        //     Err(e) => Err(e),
-        // }
+        let private_key = Self::from_pkcs8_der_base64(&private_key).map_err(de::Error::custom)?;
 
-        todo!("Impl correct private key deserialize")
+        Ok(private_key)
     }
 }
 
@@ -229,6 +225,39 @@ impl PrivateKey {
         // TODO: could this be created without throwing error?
         let private_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
         Ok(Self(private_key))
+    }
+
+    /// Export as PKCS#1 DER (RSA-specific)
+    pub fn to_pkcs1_der(&self) -> Result<Vec<u8>> {
+        self.0
+            .private_key_to_der()
+            .map_err(|e| Error::Unimplemented(e.to_string()))
+    }
+
+    /// Export as PKCS#8 DER
+    pub fn to_pkcs8_der(&self) -> Result<Vec<u8>> {
+        let pkey =
+            PKey::from_rsa(self.0.clone()).map_err(|e| Error::Unimplemented(e.to_string()))?;
+
+        pkey.private_key_to_der()
+            .map_err(|e| Error::Unimplemented(e.to_string()))
+    }
+
+    /// Export as PKCS#8 DER Base64 encoded
+    pub fn to_pkcs8_der_base64(&self) -> Result<String> {
+        Ok(b64::b64u_encode(self.to_pkcs8_der()?))
+    }
+
+    pub fn from_pkcs8_der_base64(value: &str) -> Result<Self> {
+        // Decode base64 → DER bytes
+        let der = b64::b64u_decode(value).map_err(|e| Error::Unimplemented(e.to_string()))?;
+
+        // Parse PKCS#8 → PKey → RSA
+        let pkey =
+            PKey::private_key_from_der(&der).map_err(|e| Error::Unimplemented(e.to_string()))?;
+
+        let rsa = pkey.rsa().map_err(|e| Error::Unimplemented(e.to_string()))?;
+        Ok(Self(rsa))
     }
 }
 
@@ -335,7 +364,8 @@ impl From<String> for KeyType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct JwkThumbprint(Box<str>);
 
 impl From<Rsa<Public>> for JwkThumbprint {
