@@ -192,8 +192,6 @@ impl Account {
             // TODO: add directory url in warn
             #[cfg(feature = "tracing")]
             tracing::warn!("Client and Credentials Directory Url do not match");
-
-            dbg!("Client and Credentials Directory Url do not match");
         }
 
         Self {

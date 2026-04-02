@@ -156,13 +156,10 @@ impl Order {
         let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::Other(serde_json::json!({"csr":csr_der_encoded }));
 
-        let response = account
+        account
             .client
             .post(url, &account.credentials.private_key, auth, body)
             .await?;
-
-        let finiazlize = response.json::<Self>().await?;
-        dbg!(finiazlize);
 
         Ok(csr)
     }

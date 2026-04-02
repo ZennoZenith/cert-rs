@@ -243,17 +243,12 @@ impl ResponseExt for Response {
 
     async fn handle_response_error(self) -> Result<Self> {
         let headers = self.headers();
-        // dbg!(headers);
 
         let Some(ct) = headers.get(CONTENT_TYPE) else {
             return Err(Error::ContentType);
         };
 
         let mime: Mime = ct.to_str()?.parse()?;
-
-        // dbg!(&mime);
-        // dbg!(&mime.type_());
-        // dbg!(&mime.subtype());
 
         if mime.type_() == mime::APPLICATION
             && mime.subtype() == "problem"
@@ -273,7 +268,6 @@ impl ResponseExt for Response {
 
         // TODO: ???
         // let status = response.status();
-        // dbg!(status);
         // match status.as_u16() {
         //     100..=399 => (),
         //     400 => (),
@@ -463,7 +457,7 @@ mod tests {
         let err = parse(json);
 
         let msg = format!("{err}");
-        dbg!(&msg);
+        println!("{msg}");
 
         assert!(msg.contains("Malformed"));
         assert!(msg.contains("Invalid payload"));
