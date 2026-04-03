@@ -25,13 +25,37 @@ pub struct NewAccount {
     pub external_account_binding: Option<serde_json::Value>,
 }
 
+/// Account Status
+///
+/// Defined in [RFC 8555 §7.1.6].
+///
+/// Account objects are created in the "valid" state, since no further
+/// action is required to create an account after a successful newAccount
+/// request. If the account is deactivated by the client or revoked by
+/// the server, it moves to the corresponding state.
+///
+/// ```text
+///
+///                     valid
+///                       |
+///                       |
+///           +-----------+-----------+
+///    Client |                Server |
+///   deactiv.|                revoke |
+///           V                       V
+///      deactivated               revoked
+///
+///                   State Transitions for Account Objects
+///
+/// ```
+///
+/// [RFC 8555 §7.1.6]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.6
 #[derive(
     Debug,
     Clone,
     Copy,
     Deserialize,
     Serialize,
-    Default,
     strum_macros::Display,
     strum_macros::EnumString,
     strum_macros::IntoStaticStr,
@@ -40,42 +64,47 @@ pub struct NewAccount {
 )]
 #[strum(ascii_case_insensitive)]
 #[serde(rename_all = "lowercase")]
-#[non_exhaustive]
 pub enum AccountStatus {
-    #[default]
     Valid,
+
+    /// client-initiated deactivation
     Deactivated,
+    /// server-initiated deactivation
     Revoked,
 }
 
-/// TODO: add docs, [RFC 8555 §9.7.1]
+/// Account Status
 ///
-/// [RFC 8555 §9.7.1]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.1
-#[derive(Clone, Debug, Serialize, Deserialize)]
+/// Defined in [RFC 8555 §7.1.1], [RFC 8555 §9.7.1].
+///
+/// An ACME account resource represents a set of metadata associated with an account.
+///
+/// [RFC 8555 §7.1.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.1
+/// [RFC 8555 §9.7.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.1
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountObject {
+    /// The status of this account
     pub status: AccountStatus,
 
     #[allow(dead_code)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub contact: Option<Vec<String>>,
 
     #[allow(dead_code)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub terms_of_service_agreed: Option<bool>,
 
     // TODO: external_account_binding object type
     #[allow(dead_code)]
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub external_account_binding: Option<serde_json::Value>,
 
     /// A Url from which a list of orders submitted by this acocount can be fetched
-    /// The ACME spec optionally defines an orders field in the account object, but:
+    /// The ACME spec required an orders field in the account object, but:
     /// Let’s Encrypt does NOT implement order listing
+    /// [RFC 8555 §7.1.2.1](https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2.1)
     pub orders: Option<Url>,
 }
 
-/// ACME account credentials
+/// Account credentials
 ///
 /// This opaque type contains the account ID, the private key data and the
 /// server URLs from the relevant ACME server. This can be used to serialize

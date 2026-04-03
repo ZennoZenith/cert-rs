@@ -33,6 +33,7 @@ pub enum IdentifierType {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Identifier {
+    /// [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7)
     #[serde(rename = "type")]
     pub type_: IdentifierType,
     pub value: String,
@@ -47,13 +48,50 @@ impl<T: ToString> From<T> for Identifier {
     }
 }
 
+/// Order Status
+///
+/// Defined in [RFC 8555 §7.1.6].
+///
+/// Order objects are created in the "pending" state. Once all of the
+/// authorizations listed in the order object are in the "valid" state,
+/// the order transitions to the "ready" state. The order moves to the
+/// "processing" state after the client submits a request to the order's
+/// "finalize" URL and the CA begins the issuance process for the
+/// certificate. Once the certificate is issued, the order enters the
+/// "valid" state. If an error occurs at any of these stages, the order
+/// moves to the "invalid" state. The order also moves to the "invalid"
+/// state if it expires or one of its authorizations enters a final state
+/// other than "valid" ("expired", "revoked", or "deactivated").
+///
+/// ```text
+///    pending --------------+
+///       |                  |
+///       | All authz        |
+///       | "valid"          |
+///       V                  |
+///     ready ---------------+
+///       |                  |
+///       | Receive          |
+///       | finalize         |
+///       | request          |
+///       V                  |
+///   processing ------------+
+///       |                  |
+///       | Certificate      | Error or
+///       | issued           | Authorization failure
+///       V                  V
+///     valid             invalid
+///
+///                    State Transitions for Order Objects
+/// ```
+///
+/// [RFC 8555 §7.1.6]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.6
 #[derive(
     Debug,
     Clone,
     Copy,
     Deserialize,
     Serialize,
-    Default,
     strum_macros::Display,
     strum_macros::EnumString,
     strum_macros::IntoStaticStr,
@@ -63,7 +101,6 @@ impl<T: ToString> From<T> for Identifier {
 #[strum(ascii_case_insensitive)]
 #[serde(rename_all = "lowercase")]
 pub enum OrderStatus {
-    #[default]
     Pending,
     Ready,
     Processing,
@@ -71,23 +108,47 @@ pub enum OrderStatus {
     Invalid,
 }
 
-/// TODO: add docs, [RFC 8555 §9.7.2]
+/// Order Object
 ///
-/// [RFC 8555 §9.7.1]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.2
+/// Defined in [RFC 8555 §7.1.3]
+///
+/// An ACME order object represents a client's request for a certificate
+/// and is used to track the progress of that order through to issuance.
+/// Thus, the object contains information about the requested
+/// certificate, the authorizations that the server requires the client
+/// to complete, and any certificates that have resulted from this order.
+///
+/// [RFC 8555 §7.1.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Order {
+    /// The status of this order
     pub status: OrderStatus,
-    pub identifiers: Vec<Identifier>,
-    pub authorizations: Vec<Url>,
-    pub finalize: Url,
 
+    /// The timestamp after which the server will consider this order invalid
     pub expires: Option<TimeRfc3339>,
+
+    pub identifiers: Vec<Identifier>,
+
+    // TODO
     pub profile: Option<String>,
+
+    /// The requested value of the notBefore field in the certificate
     pub not_before: Option<TimeRfc3339>,
+    /// The requested value of the notAfter field in the certificate
     pub not_after: Option<TimeRfc3339>,
     // TODO: error object type
     pub error: Option<AcmeError>,
+
+    pub authorizations: Vec<Url>,
+
+    /// A URL that a CSR must be ``POSTed`` to once
+    /// all of the order's authorizations are satisfied to finalize the
+    /// order.The result of a successful finalization will be the
+    /// population of the certificate URL for the order.
+    pub finalize: Url,
+
+    /// A URL for the certificate that has been issued in response to this order.
     pub certificate: Option<Url>,
 }
 

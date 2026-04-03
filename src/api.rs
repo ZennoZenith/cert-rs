@@ -73,8 +73,14 @@ impl fmt::Display for AcmeError {
     }
 }
 
+#[non_exhaustive]
 #[derive(Debug, Clone, Serialize, strum_macros::Display)]
-// TODO: add rfc section for all error types
+/// # ACME Error Type.
+///
+/// Defined in [RFC 8555 §6.7].
+/// This list is not exhaustive
+///
+/// [RFC 8555 §6.7]: https://datatracker.ietf.org/doc/html/rfc8555#section-6.7
 pub enum AcmeErrorType {
     /// The request specified an account that does not exist
     AccountDoesNotExist,
@@ -148,9 +154,9 @@ pub enum AcmeErrorType {
     /// Visit the "instance" URL and take actions specified there
     UserActionRequired,
 
-    /// Variant not defined in [RFC 8555]
+    /// Variant not defined in [RFC 8555 §6.7]
     ///
-    /// [RFC 8555]: https://www.rfc-editor.org/rfc/rfc8555
+    /// [RFC 8555 §6.7]: https://datatracker.ietf.org/doc/html/rfc8555#section-6.7
     #[strum(serialize = "Unknown({0})")]
     Unknown(Box<str>),
 }
@@ -163,7 +169,6 @@ impl<'de> Deserialize<'de> for AcmeErrorType {
         let s = String::deserialize(deserializer)?;
         let name = s.strip_prefix(ACME_PREFIX).unwrap_or(&s);
 
-        // TODO: add rfc section for all error types
         let err = match name {
             "accountDoesNotExist" => Self::AccountDoesNotExist,
             "alreadyRevoked" => Self::AlreadyRevoked,

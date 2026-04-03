@@ -1,3 +1,12 @@
+//! An ACME challenge object represents a server's offer to validate a
+//! client's possession of an identifier in a specific way.
+//!
+//! Unlike the other objects, there is not a single standard structure
+//! for a challenge object. The contents of a challenge object depend on
+//! the validation method being used. The general structure of challenge
+//! objects and an initial set of validation methods are described in
+//! [RFC 8555 §8](https://datatracker.ietf.org/doc/html/rfc8555#section-8)
+
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -5,29 +14,42 @@ use crate::{
     Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid, time::TimeRfc3339,
 };
 
-// /// ACME clients must ignore unknown challenge types per the spec.
-// ///
-// /// From RFC 8555 Section 7.1.4:
-// ///
-// /// Clients should ignore challenge types they do not recognize.
-// #[derive(
-//     Debug,
-//     Clone,
-//     Copy,
-//     strum_macros::Display,
-//     strum_macros::EnumString,
-//     strum_macros::IntoStaticStr,
-//     PartialEq,
-//     Eq,
-// )]
-// #[non_exhaustive]
-// pub enum ChallengeType {
-//     Http01,
-//     Dns01,
-//     // // TODO: tls-alpn-01 is not defined in RFC 8555
-//     // TlsAlpn01,
-// }
-
+/// Challenge Status
+///
+/// Defined in [RFC 8555 §7.1.6].
+///
+/// Challenge objects are created in the "pending" state. They transition to the
+/// "processing" state when the client responds to the challenge and the server
+/// begins attempting to validate that the client has completed the challenge.
+/// Note that within the "processing" state, the server may attempt to validate the
+/// challenge multiple times. Likewise, client requests for retries do not cause a
+/// state change. If validation is successful, the challenge moves to the "valid"
+/// state; if there is an error, the challenge moves to the "invalid" state.
+///
+/// ```text
+///             pending
+///               |
+///               | Receive
+///               | response
+///               V
+///           processing <-+
+///               |   |    | Server retry or
+///               |   |    | client retry request
+///               |   +----+
+///               |
+///               |
+///   Successful  |   Failed
+///   validation  |   validation
+///     +---------+---------+
+///     |                   |
+///     V                   V
+///   valid              invalid
+///
+///                  State Transitions for Challenge Objects
+///
+/// ```
+///
+/// [RFC 8555 §7.1.6]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.6
 #[derive(
     Debug,
     Clone,
@@ -42,9 +64,7 @@ use crate::{
     Eq,
 )]
 #[strum(ascii_case_insensitive)]
-#[strum(serialize_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
-#[non_exhaustive]
 pub enum ChallengeStatus {
     #[default]
     Pending,

@@ -6,11 +6,11 @@ use crate::{
     api::{RequestBuilderExt, ResponseExt as _},
 };
 
-/// ACME directory object.
+/// Directory object.
 ///
 /// Defined in [RFC 8555 §7.1.1].
 ///
-/// [RFC 8555 §7.1.1]: https://www.rfc-editor.org/rfc/rfc8555#section-7.1.1
+/// [RFC 8555 §7.1.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.1
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Directory {
@@ -24,11 +24,11 @@ pub struct Directory {
     pub meta: Option<DirectoryMeta>,
 }
 
-/// ACME Directory Metadata Fields.
+/// Directory Metadata Fields.
 ///
 /// Defined in [RFC 8555 §9.7.6].
 ///
-/// [RFC 8555 §9.7.6]: https://www.rfc-editor.org/rfc/rfc8555#section-9.7.6
+/// [RFC 8555 §9.7.6]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.6
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryMeta {
@@ -141,6 +141,8 @@ impl TryFrom<LetsEncrypt> for Url {
     }
 }
 
+/// Helper type to reference ``ZeroSSL`` server URL
+///
 /// ``ZeroSSL`` ACME only supports production at the moment
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
