@@ -14,7 +14,7 @@ use cert_rs::{
     account::{Account, NewAccount},
     authorization::Authorization,
     challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
-    order::{Order, OrderStatus},
+    order::{NewOrder, Order, OrderStatus},
 };
 use clap::Parser;
 use colored::Colorize;
@@ -94,8 +94,9 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     let domains: Vec<String> =
         vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];
+    let new_order = NewOrder::from_domains(domains);
 
-    let (order_url, _order) = Order::create(&account, domains).await?;
+    let (order_url, _order) = Order::create(&account, new_order).await?;
 
     let order = Order::status(&account, &order_url).await?;
 
