@@ -4,6 +4,7 @@
 - struct Base64(String)
 - Correct scoping of modules
 - Better error types
+- jwk_thumbprint variable name could be rename to something better
 - Revert Serialize derive where not required
 - Acme Retry-After header
 - tracing support

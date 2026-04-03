@@ -1,3 +1,8 @@
+//! Account Management
+//!
+//! Create an account on an ACME server and perform some modifications to
+//! the account after it has been created.
+
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize, Serializer, de, ser::SerializeStruct as _};
@@ -9,18 +14,47 @@ use crate::{
     authentication::{Jwk, JwkOrKid, JwkThumbprint, Kid, PrivateKey, rsa_private_to_rsa_public},
 };
 
+/// New Account
+///
+/// Defined in [RFC 8555 §7.3].
+///
+/// Stub account object for creating new account.
+///
+/// [RFC 8555 §7.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3
 #[derive(Debug, Default, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct NewAccount {
+    /// [RFC 8555 §7.1.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contacts: Option<Vec<String>>,
+
+    /// [RFC 8555 §7.1.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terms_of_service_agreed: Option<bool>,
 
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub contacts: Option<Vec<String>>,
-
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub only_return_existing: Option<bool>,
 
+    /// [RFC 8555 §7.1.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_account_binding: Option<serde_json::Value>,
+}
+
+/// Update Account
+///
+/// Defined in [RFC 8555 §7.3.2].
+///
+/// Stub account object for updating account.
+///
+/// [RFC 8555 §7.3.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.2
+#[derive(Debug, Default, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAccount {
+    /// [RFC 8555 §7.1.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub contacts: Option<Vec<String>>,
+
+    /// [RFC 8555 §7.1.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_account_binding: Option<serde_json::Value>,
 }
@@ -73,13 +107,13 @@ pub enum AccountStatus {
     Revoked,
 }
 
-/// Account Status
+/// Account Object
 ///
-/// Defined in [RFC 8555 §7.1.1], [RFC 8555 §9.7.1].
+/// Defined in [RFC 8555 §7.1.2], [RFC 8555 §9.7.1].
 ///
 /// An ACME account resource represents a set of metadata associated with an account.
 ///
-/// [RFC 8555 §7.1.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.1
+/// [RFC 8555 §7.1.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2
 /// [RFC 8555 §9.7.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.1
 #[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -200,22 +234,9 @@ impl AccountCredentials {
 pub struct Account {
     pub(crate) client: Arc<Client>,
     pub(crate) credentials: AccountCredentials,
-    // pub(crate) status: AccountStatus,
-    // pub(crate) orders: Option<Url>,
 }
 
 impl Account {
-    // #[must_use]
-    // pub const fn status(&self) -> AccountStatus {
-    //     self.status
-    // }
-
-    // TODO: Fetch order url if acme account uri
-    // #[must_use]
-    // pub const fn orders(&self) -> Option<&Url> {
-    //     self.orders.as_ref()
-    // }
-
     pub fn load(client: Client, credentials: AccountCredentials) -> Self {
         if client.directory_url != credentials.directory_url {
             // TODO: add directory url in warn
@@ -244,16 +265,54 @@ impl Account {
         &self.credentials.jwk_thumbprint
     }
 
+    /// Create new account by sending a POST request to the server's newAccount URL
+    /// Will overwrite `new_account.only_return_existing` to false.
+    ///
     /// # Errors
     ///
     /// TODO: Write error docs
     pub async fn create(client: Client, new_account: NewAccount) -> Result<Self> {
         let private_key = PrivateKey::new()?;
 
-        Self::fetch_of_create(client, &private_key, new_account).await
+        let new_account = NewAccount {
+            only_return_existing: Some(false),
+            ..new_account
+        };
+
+        Self::fetch_or_create(client, &private_key, new_account).await
     }
 
-    async fn fetch_of_create(
+    /// Fetch account by sending a POST request to the server's newAccount URL.
+    /// Will overwrite `new_account.only_return_existing` to true.
+    /// Will not create a new account if one does not already exist.
+    ///
+    /// Refer [RFC 8555 §7.3.1](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.1)
+    ///
+    /// # Errors
+    ///
+    /// Will fail if account does not exist `AcmeErrorType::AccountDoesNotExist`.
+    ///
+    /// TODO: Write error docs
+    pub async fn fetch(
+        client: Client,
+        private_key: &PrivateKey,
+        new_account: NewAccount,
+    ) -> Result<Self> {
+        let new_account = NewAccount {
+            only_return_existing: Some(true),
+            ..new_account
+        };
+
+        Self::fetch_or_create(client, private_key, new_account).await
+    }
+
+    /// Create new account by sending a POST request to the server's newAccount URL
+    /// If account already exists for a given private key, then fetch details else create new account
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub async fn fetch_or_create(
         client: Client,
         private_key: &PrivateKey,
         new_account: NewAccount,
@@ -294,8 +353,6 @@ impl Account {
 
         Ok(Self {
             client: Arc::new(client),
-            // status: intermediate_account.status,
-            // orders: intermediate_account.orders,
             credentials: AccountCredentials {
                 kid,
                 private_key: private_key.clone(),
@@ -313,7 +370,7 @@ impl Account {
         _kid: &Kid,
         _private_key: &PrivateKey,
     ) -> Result<AccountObject> {
-        // TODO:
+        // TODO: [RFC 8555 §7.3](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3)
         unimplemented!(
             "Not yet know how to get account object, or is there even a need to get account object"
         );
@@ -328,11 +385,65 @@ impl Account {
         // Ok(response.json().await?)
     }
 
-    // TODO: Account Update
-    //
-    // TODO: External Account Binding
+    /// Update account by sending a POST request to the server's account URL (Kid)
+    ///
+    /// Will ignore any updates to the "orders" field, "termsOfServiceAgreed" field,
+    /// the "status" field.
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub async fn update(&self, update_account: UpdateAccount) -> Result<Self> {
+        #[derive(Deserialize)]
+        struct IntermidiateAccount {
+            status: AccountStatus,
+            #[serde(rename = "orders")]
+            _orders: Option<Url>,
+        }
+
+        let url = &self.credentials.kid;
+
+        let public_key = rsa_private_to_rsa_public(self.credentials.private_key.rsa_key())
+            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+
+        let auth = JwkOrKid::Kid(&self.credentials.kid);
+        let body = AcmeApiBody::Other(update_account);
+
+        let response = self
+            .client
+            .post(url, &self.credentials.private_key, auth, body)
+            .await?;
+
+        let intermediate_account = response
+            .json::<IntermidiateAccount>()
+            .await
+            .map_err(|_| Error::Unimplemented("Cannot extact account status".into()))?;
+
+        if intermediate_account.status != AccountStatus::Valid {
+            return Err(Error::AccountStatusNoValid(
+                intermediate_account.status.to_string(),
+            ));
+        }
+
+        let jwk_thumbprint = public_key.into();
+
+        Ok(Self {
+            client: Arc::clone(&self.client),
+            credentials: AccountCredentials {
+                kid: self.credentials.kid.clone(),
+                private_key: self.credentials.private_key.clone(),
+                directory_url: self.credentials.directory_url.clone(),
+                jwk_thumbprint,
+            },
+        })
+    }
+
+    // TODO: External Account Binding.
+    // Defined in [RFC 8555 §7.3.4](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.4).
     //
     // TODO: Account Key Rollover
+    // Defined in [RFC 8555 §7.3.5](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5).
     //
     // TODO: Account Deactivation
+    // Defined in [RFC 8555 §7.3.6](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6).
 }

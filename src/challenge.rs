@@ -1,12 +1,3 @@
-//! An ACME challenge object represents a server's offer to validate a
-//! client's possession of an identifier in a specific way.
-//!
-//! Unlike the other objects, there is not a single standard structure
-//! for a challenge object. The contents of a challenge object depend on
-//! the validation method being used. The general structure of challenge
-//! objects and an initial set of validation methods are described in
-//! [RFC 8555 §8](https://datatracker.ietf.org/doc/html/rfc8555#section-8)
-
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -135,7 +126,14 @@ pub struct UnknownChallenge {
     pub extra: serde_json::Value,
 }
 
-/// [RFC 8555 section 8]: https://www.rfc-editor.org/rfc/rfc8555#section-8
+/// An ACME challenge object represents a server's offer to validate a
+/// client's possession of an identifier in a specific way.
+///
+/// Unlike the other objects, there is not a single standard structure
+/// for a challenge object. The contents of a challenge object depend on
+/// the validation method being used. The general structure of challenge
+/// objects and an initial set of validation methods are described in
+/// [RFC 8555 §8](https://datatracker.ietf.org/doc/html/rfc8555#section-8)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub enum Challenge {
