@@ -1,3 +1,5 @@
+//! Authorization Management
+
 use crate::{Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid, b64};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -69,13 +71,15 @@ pub enum AuthorizationStatus {
 
 /// Authorization Object
 ///
-/// Defined in [RFC 8555 §7.1.4].
+/// Defined in [RFC 8555 §7.1.4], [RFC 8555 §9.7.3].
 ///
 /// Authorization object represents a server's authorization for an account to represent an identifier.
 ///
 /// [RFC 8555 §7.1.4]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.4
+/// [RFC 8555 §9.7.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.3
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Authorization {
+    /// The identifier that the account is authorized to represent.
     pub identifier: Identifier,
 
     /// The status of this authorization
@@ -101,9 +105,16 @@ pub struct Authorization {
 }
 
 impl Authorization {
+    /// To check on the status of an authorization, sends a POST- as-GET request
+    /// to the authorization URL
+    ///
+    /// Refer [RFC 8555 §7.5.1]
+    ///
     /// # Errors
     ///
     /// TODO: Write error docs
+    ///
+    /// [RFC 8555 §7.5.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.1
     pub async fn get(account: &Account, url: &Url) -> Result<Self> {
         let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = AcmeApiBody::EMPTY_STRING;
@@ -117,11 +128,62 @@ impl Authorization {
         Ok(authorization)
     }
 
+    /// Deactivating an Authorization
+    ///
+    /// To relinquish its authorization to issue certificates for an identifier.
+    ///
+    /// Refer [RFC 8555 §7.5.2]
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    ///
+    /// [RFC 8555 §7.5.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.2
+    pub async fn deactivate(account: &Account, url: &Url) -> Result<Self> {
+        let auth = JwkOrKid::Kid(&account.credentials.kid);
+        let body = AcmeApiBody::Other(serde_json::json!({
+           "status": "deactivated"
+        }));
+
+        let response = account
+            .client
+            .post(url, &account.credentials.private_key, auth, body)
+            .await?;
+
+        let authorization = response.json::<Self>().await?;
+        Ok(authorization)
+    }
+
+    /// Key Authorizations
+    ///
+    /// keyAuthorization = token || '.' || base64url(Thumbprint(accountKey))
+    ///
+    /// The "||" operator indicates concatenation of strings.
+    ///
+    /// Used when responding [``Http01Challenge``]
+    ///
+    /// Refer [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
+    ///
+    /// # Example
+    ///
+    /// `GET /.well-known/acme-challenge/<get_keyauth()>`
     #[must_use]
     pub fn gen_keyauth(challenge_token: &str, jwk_thumbprint: &str) -> String {
         format!("{challenge_token}.{jwk_thumbprint}")
     }
 
+    /// Thumbprint
+    ///
+    /// Computation specified in [RFC 7638](https://datatracker.ietf.org/doc/html/rfc7638), using the SHA-256 digest [FIPS180-4]
+    ///
+    /// Used when responding [``Dns01Challenge``]
+    ///
+    /// Refer [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1),
+    /// [RFC 8555 §8.4](https://datatracker.ietf.org/doc/html/rfc8555#section-8.4)
+    ///
+    /// # Example
+    ///
+    /// `_acme-challenge.www.example.org. 300 IN TXT "<gen_sha_256_keyauth()>"`
     #[must_use]
     pub fn gen_sha_256_keyauth(challenge_token: &str, jwk_thumbprint: &str) -> String {
         let keyauth = Self::gen_keyauth(challenge_token, jwk_thumbprint);

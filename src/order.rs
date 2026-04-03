@@ -1,3 +1,5 @@
+//! Order Management
+
 use crate::{
     AcmeError, Error, Result,
     account::Account,
@@ -11,7 +13,7 @@ use openssl::{pkey::PKey, rsa::Rsa, x509::X509Req};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-/// TODO: docs
+/// [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7)
 #[derive(
     Debug,
     Clone,
@@ -38,6 +40,7 @@ pub struct Identifier {
     /// [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7)
     #[serde(rename = "type")]
     pub type_: IdentifierType,
+    /// The identifier itself
     pub value: String,
 }
 
@@ -144,7 +147,7 @@ impl NewOrder {
 
 /// Order Object
 ///
-/// Defined in [RFC 8555 §7.1.3]
+/// Defined in [RFC 8555 §7.1.3], [RFC 8555 §9.7.2].
 ///
 /// An ACME order object represents a client's request for a certificate
 /// and is used to track the progress of that order through to issuance.
@@ -153,6 +156,7 @@ impl NewOrder {
 /// to complete, and any certificates that have resulted from this order.
 ///
 /// [RFC 8555 §7.1.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.2
+/// [RFC 8555 §9.7.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.2
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Order {
@@ -162,6 +166,7 @@ pub struct Order {
     /// The timestamp after which the server will consider this order invalid
     pub expires: Option<TimeRfc3339>,
 
+    /// An array of identifier objects that the order pertains to.
     pub identifiers: Vec<Identifier>,
 
     // TODO

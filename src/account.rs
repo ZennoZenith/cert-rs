@@ -230,6 +230,9 @@ impl AccountCredentials {
     }
 }
 
+/// Used for ACME account management, Not to be confused with [``AccountObject``].
+///
+/// This opaque type contains the [``Client``] and the [``AccountCredentials``]
 #[derive(Debug, Clone)]
 pub struct Account {
     pub(crate) client: Arc<Client>,

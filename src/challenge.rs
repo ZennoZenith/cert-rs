@@ -1,3 +1,10 @@
+//! Challenge responding/retrying
+//!
+//! To prove control of the identifier and receive authorization, the client
+//! needs to provision the required challenge response based on the challenge
+//! type and indicate to the server that it is ready for the challenge validation
+//! to be attempted.
+
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -64,9 +71,13 @@ pub enum ChallengeStatus {
     Invaid,
 }
 
-/// basic field
+/// Challenge objects all contain the following basic fields.
 ///
 /// All additional fields are specified by the challenge type.
+///
+/// `type`: The type of challenge encoded in the object is defined by [``KnownChallenge``].
+///
+/// All additional fields are specified by the challenge type
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct ChallengeBase {
     pub url: Url,
@@ -76,6 +87,7 @@ pub struct ChallengeBase {
     pub error: Option<serde_json::Value>,
 }
 
+/// HTTP Challenge. Defined in [RFC 8555 §8.3](https://datatracker.ietf.org/doc/html/rfc8555#section-8.3)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Http01Challenge {
     #[serde(flatten)]
@@ -84,6 +96,7 @@ pub struct Http01Challenge {
     pub token: Box<str>,
 }
 
+/// DNS Challenge. Defined in [RFC 8555 §8.4](https://datatracker.ietf.org/doc/html/rfc8555#section-8.4)
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Dns01Challenge {
     #[serde(flatten)]
@@ -92,6 +105,7 @@ pub struct Dns01Challenge {
     pub token: Box<str>,
 }
 
+/// TODO: Not defined in rfc 8555
 #[derive(Debug, Clone, Deserialize)]
 pub struct TlsAlpn01Challenge {
     #[serde(flatten)]
@@ -107,9 +121,11 @@ pub struct TlsAlpn01Challenge {
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(tag = "type")]
 pub enum KnownChallenge {
+    /// HTTP Challenge. Defined in [RFC 8555 §8.3](https://datatracker.ietf.org/doc/html/rfc8555#section-8.3)
     #[serde(rename = "http-01")]
     Http01(Http01Challenge),
 
+    /// DNS Challenge. Defined in [RFC 8555 §8.4](https://datatracker.ietf.org/doc/html/rfc8555#section-8.4)
     #[serde(rename = "dns-01")]
     Dns01(Dns01Challenge),
     // // TODO: tls-alpn-01 is not defined in RFC 8555
@@ -166,9 +182,19 @@ impl KnownChallenge {
         }
     }
 
+    /// Responding to Challenges
+    ///
+    /// Indicates the server that client is ready for the challenge validation
+    /// by sending an empty JSON body ("{}") carried in a POST request to the
+    /// challenge URL (not the authorization URL)
+    ///
+    /// Refer: [RFC 8555 §7.5.1]
+    ///
     /// # Errors
     ///
     /// TODO: Write error docs
+    ///
+    /// [RFC 8555 §7.5.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.1
     pub async fn respond(account: &Account, url: &Url) -> Result<Self> {
         let url = &url;
 
@@ -181,6 +207,22 @@ impl KnownChallenge {
 
         let challenge = response.json::<Self>().await?;
         Ok(challenge)
+    }
+
+    /// Retrying Challenges
+    ///
+    /// Explicitly request a retry by re-sending response to a challenge in a
+    /// new POST request.
+    ///
+    /// Refer: [RFC 8555 §8.2]
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    ///
+    /// [RFC 8555 §8.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-8.2
+    pub async fn retry(account: &Account, url: &Url) -> Result<Self> {
+        Self::respond(account, url).await
     }
 
     /// # Errors

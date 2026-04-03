@@ -1,3 +1,9 @@
+//! Directory Resource
+//!
+//! In order to help clients configure themselves with the right URLs for each
+//! ACME operation, ACME servers provide a directory object. This should be the
+//! only URL needed to configure clients.
+
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -8,9 +14,10 @@ use crate::{
 
 /// Directory object.
 ///
-/// Defined in [RFC 8555 §7.1.1].
+/// Defined in [RFC 8555 §7.1.1], [RFC 8555 §9.7.5].
 ///
 /// [RFC 8555 §7.1.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.1
+/// [RFC 8555 §9.7.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.5
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Directory {
