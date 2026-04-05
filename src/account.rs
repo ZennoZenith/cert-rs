@@ -12,9 +12,7 @@ use url::Url;
 use crate::{
     Client, Error, Result,
     api::{AcmeApiBody, extract_location_header},
-    authentication::{
-        Jwk, JwkOrKid, JwkThumbprint, Jws, Kid, PrivateKey, rsa_private_to_rsa_public,
-    },
+    authentication::{Jwk, JwkOrKid, Jws, Kid, PrivateKey, rsa_private_to_rsa_public},
 };
 
 /// New Account
@@ -156,8 +154,7 @@ pub struct AccountCredentials {
     pub(crate) private_key: PrivateKey,
     pub(crate) directory_url: Url,
 
-    /// jwk -> to json -> sha256 hash -> base64url
-    pub(crate) jwk_thumbprint: JwkThumbprint,
+    pub(crate) jwk: Jwk,
 }
 
 impl Serialize for AccountCredentials {
@@ -170,7 +167,7 @@ impl Serialize for AccountCredentials {
         state.serialize_field("kid", &self.kid)?;
         state.serialize_field("private_key", &self.private_key)?;
         state.serialize_field("directory_url", &self.directory_url)?;
-        state.serialize_field("jwk_thumbprint", &self.jwk_thumbprint)?;
+        state.serialize_field("jwk", &self.jwk)?;
 
         state.end()
     }
@@ -199,13 +196,13 @@ impl<'de> serde::de::Deserialize<'de> for AccountCredentials {
         let public_key =
             rsa_private_to_rsa_public(private_key.rsa_key()).map_err(de::Error::custom)?;
 
-        let jwk_thumbprint = public_key.into();
+        let jwk = public_key.into();
 
         Ok(Self {
             kid,
             private_key,
             directory_url,
-            jwk_thumbprint,
+            jwk,
         })
     }
 }
@@ -217,13 +214,13 @@ impl AccountCredentials {
     pub fn load_from_parts(directory_url: Url, kid: Kid, private_key: PrivateKey) -> Result<Self> {
         let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
             .map_err(|e| Error::Unimplemented(e.to_string()))?;
-        let jwk_thumbprint = public_key.into();
+        let jwk = public_key.into();
 
         Ok(Self {
             kid,
             private_key,
             directory_url,
-            jwk_thumbprint,
+            jwk,
         })
     }
 }
@@ -341,8 +338,8 @@ impl Account {
             ));
         }
 
-        let jwk_thumbprint = public_key.into();
         let directory_url = client.directory_url.clone();
+        let jwk = public_key.into();
 
         Ok(Self {
             client,
@@ -350,7 +347,7 @@ impl Account {
                 kid,
                 private_key: private_key.clone(),
                 directory_url,
-                jwk_thumbprint,
+                jwk,
             },
         })
     }
@@ -420,7 +417,7 @@ impl Account {
             ));
         }
 
-        let jwk_thumbprint = public_key.into();
+        let jwk = public_key.into();
 
         Ok(Self {
             client: Arc::clone(&self.client),
@@ -428,7 +425,7 @@ impl Account {
                 kid: self.credentials.kid.clone(),
                 private_key: self.credentials.private_key.clone(),
                 directory_url: self.credentials.directory_url.clone(),
-                jwk_thumbprint,
+                jwk,
             },
         })
     }

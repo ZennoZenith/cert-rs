@@ -1,10 +1,7 @@
 # TODO
 
-- Profiles Meta
-- Recheck struct Base64(String) Serialize
-- Correct scoping of modules
+- Profiles Meta: Is defined in later rfc
 - Better error types
-- jwk_thumbprint variable name could be rename to something better
 - Revert Serialize derive where not required
 - Acme Retry-After header
 - tracing support

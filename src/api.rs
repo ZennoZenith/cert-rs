@@ -292,7 +292,7 @@ impl ResponseExt for Response {
 #[derive(Debug, Clone)]
 pub enum AcmeApiBody<T = ()>
 where
-    T: Serialize + Clone + fmt::Debug,
+    T: Serialize,
 {
     EmptyString,
     EmptyObject,
@@ -306,7 +306,7 @@ impl AcmeApiBody<()> {
 
 impl<T> Serialize for AcmeApiBody<T>
 where
-    T: Serialize + fmt::Debug + Clone,
+    T: Serialize,
 {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where

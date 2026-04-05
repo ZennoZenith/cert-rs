@@ -169,7 +169,7 @@ impl Authorization {
     /// `GET /.well-known/acme-challenge/<get_keyauth()>`
     #[must_use]
     pub fn gen_keyauth(account: &Account, challenge_token: &str) -> String {
-        format!("{challenge_token}.{}", account.credentials.jwk_thumbprint)
+        format!("{challenge_token}.{}", account.credentials.jwk.thumbprint())
     }
 
     /// Thumbprint

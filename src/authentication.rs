@@ -6,7 +6,7 @@ use openssl::{
 };
 use serde::{Deserialize, Serialize, Serializer, de, ser::SerializeStruct as _};
 use sha2::{Digest as _, Sha256};
-use std::{fmt, ops::Deref, str::FromStr};
+use std::{fmt, str::FromStr};
 use url::Url;
 
 use crate::{Error, Result, api::AcmeApiBody, b64};
@@ -22,22 +22,19 @@ pub fn rsa_private_to_rsa_public(
     Rsa::public_key_from_pem(&public_key_pem)
 }
 
-#[derive(Debug, Clone, Serialize)]
-pub struct Base64uEncoded<T>(T);
-
 #[derive(Debug, Clone)]
-pub struct Jws<'a, T: Serialize + Clone + fmt::Debug> {
+pub struct Jws<'a, T: Serialize> {
     /// TODO: Require to create signature (`{protected_b64}.{payload_b64}`)
     private_key: &'a PrivateKey,
-    protected: Base64uEncoded<JwsProtectedHeaders<'a>>,
-    payload: Base64uEncoded<AcmeApiBody<T>>,
+    protected: JwsProtectedHeaders<'a>,
+    payload: AcmeApiBody<T>,
     // TODO: Document signature format
     // signature: calculated at serializaion time,
 }
 
 impl<T> Serialize for Jws<'_, T>
 where
-    T: Serialize + Clone + fmt::Debug,
+    T: Serialize,
 {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
@@ -45,16 +42,16 @@ where
     {
         // serialize protected
         let protected_json =
-            serde_json::to_vec(&self.protected.0).map_err(serde::ser::Error::custom)?;
+            serde_json::to_vec(&self.protected).map_err(serde::ser::Error::custom)?;
         let protected_b64 = b64::b64u_encode(protected_json);
 
         // IMPORTANT: Serialize EmptyString as ""
         // serialize payload
-        let payload_b64 = if matches!(self.payload.0, AcmeApiBody::EmptyString) {
+        let payload_b64 = if matches!(self.payload, AcmeApiBody::EmptyString) {
             String::new()
         } else {
             let payload_json =
-                serde_json::to_vec(&self.payload.0).map_err(serde::ser::Error::custom)?;
+                serde_json::to_vec(&self.payload).map_err(serde::ser::Error::custom)?;
             b64::b64u_encode(payload_json)
         };
 
@@ -88,7 +85,7 @@ where
 
 impl<'a, T> Jws<'a, T>
 where
-    T: Serialize + Clone + fmt::Debug,
+    T: Serialize,
 {
     pub const fn new(
         private_key: &'a PrivateKey,
@@ -97,8 +94,8 @@ where
     ) -> Self {
         Self {
             private_key,
-            protected: Base64uEncoded(jws_protected_headers),
-            payload: Base64uEncoded(body),
+            protected: jws_protected_headers,
+            payload: body,
         }
     }
 
@@ -173,6 +170,21 @@ pub struct Jwk {
     /// Public key modulus base64 url encoded no pad
     #[serde(rename = "n")]
     pub(crate) modulus: Box<str>,
+
+    /// jwk -> to json -> sha256 hash -> base64url
+    ///
+    /// Refer: [RFC 7638 §7.3](https://datatracker.ietf.org/doc/html/rfc7638), [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
+    #[serde(skip_serializing)]
+    thumbprint: Box<str>,
+}
+
+impl Jwk {
+    /// jwk -> to json -> sha256 hash -> base64url
+    ///
+    /// Refer: [RFC 7638 §7.3](https://datatracker.ietf.org/doc/html/rfc7638), [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
+    pub fn thumbprint(&self) -> &str {
+        &self.thumbprint
+    }
 }
 
 impl From<Rsa<Public>> for Jwk {
@@ -181,10 +193,30 @@ impl From<Rsa<Public>> for Jwk {
         let exponent = Box::from(b64::b64u_encode(value.e().to_vec()));
         let key_type = KeyType::Rsa;
 
+        let jwk = format!(r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#);
+
+        #[cfg(debug_assertions)]
+        #[allow(clippy::expect_used)]
+        {
+            assert_eq!(
+                jwk,
+                serde_json::to_string(&serde_json::json!({
+                    "e":exponent,
+                    "kty":key_type,
+                    "n":modulus
+                }))
+                .expect("should never fail")
+            );
+        }
+
+        let hash = Sha256::digest(jwk).to_vec();
+        let thumbprint = Box::from(b64::b64u_encode(hash));
+
         Self {
             exponent,
             key_type,
             modulus,
+            thumbprint,
         }
     }
 }
@@ -385,73 +417,6 @@ impl From<String> for KeyType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct JwkThumbprint(Box<str>);
-
-impl std::fmt::Display for JwkThumbprint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<Rsa<Public>> for JwkThumbprint {
-    fn from(value: Rsa<Public>) -> Self {
-        let modulus = Box::<str>::from(b64::b64u_encode(value.n().to_vec()));
-        let exponent = Box::<str>::from(b64::b64u_encode(value.e().to_vec()));
-        let key_type = KeyType::Rsa;
-
-        let jwk = format!(r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#);
-
-        #[cfg(debug_assertions)]
-        #[allow(clippy::expect_used)]
-        {
-            assert_eq!(
-                jwk,
-                serde_json::to_string(&serde_json::json!({
-                    "e":exponent,
-                    "kty":key_type,
-                    "n":modulus
-                }))
-                .expect("should never fail")
-            );
-        }
-
-        let hash = Sha256::digest(jwk).to_vec();
-
-        Self(Box::from(b64::b64u_encode(hash)))
-    }
-}
-
-impl AsRef<str> for JwkThumbprint {
-    fn as_ref(&self) -> &str {
-        &self.0
-    }
-}
-
-impl Deref for JwkThumbprint {
-    type Target = Box<str>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<Jwk> for JwkThumbprint {
-    fn from(value: Jwk) -> Self {
-        let Jwk {
-            exponent,
-            key_type,
-            modulus,
-        } = value;
-
-        let jwk = format!(r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#);
-
-        let hash = Sha256::digest(jwk).to_vec();
-        Self(Box::from(b64::b64u_encode(hash)))
-    }
-}
-
 // region:    --- Tests
 #[cfg(test)]
 mod tests {
@@ -547,13 +512,12 @@ mod tests {
     #[test]
     fn jwk_thumbprint() -> Result<()> {
         const FIXTURE_JWK_THUMBPRINT: &str = "5BSQDxzIIoXmaszdh9jW9XDkJwWFrC8u0x-2o4yt2sM";
-
         let public_key = Rsa::<Public>::public_key_from_pem(FIXTURE_PUBLIC_KEY.as_bytes())?;
 
-        let jwk_thumbprint: JwkThumbprint = public_key.into();
+        let Jwk { thumbprint, .. } = public_key.into();
 
-        // println!("jwk_thumbprint: {}", jwk_thumbprint.as_ref());
-        assert_eq!(FIXTURE_JWK_THUMBPRINT, jwk_thumbprint.as_ref());
+        // println!("thumbprint: {}", thumbprint.as_ref());
+        assert_eq!(FIXTURE_JWK_THUMBPRINT, thumbprint.as_ref());
 
         Ok(())
     }
