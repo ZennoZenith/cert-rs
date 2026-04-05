@@ -11,9 +11,6 @@ use url::Url;
 
 use crate::{Error, Result, api::AcmeApiBody, b64};
 
-/// # Errors
-///
-/// TODO: Write error docs
 pub fn rsa_private_to_rsa_public(
     private_key: &Rsa<Private>,
 ) -> std::result::Result<Rsa<Public>, openssl::error::ErrorStack> {
@@ -23,13 +20,15 @@ pub fn rsa_private_to_rsa_public(
 }
 
 #[derive(Debug, Clone)]
+/// Signature calculated at serializaion time
+///
+/// See: [RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515)
 pub struct Jws<'a, T: Serialize> {
-    /// TODO: Require to create signature (`{protected_b64}.{payload_b64}`)
+    /// Require to create signature (`{protected_b64}.{payload_b64}`)
     private_key: &'a PrivateKey,
+
     protected: JwsProtectedHeaders<'a>,
     payload: AcmeApiBody<T>,
-    // TODO: Document signature format
-    // signature: calculated at serializaion time,
 }
 
 impl<T> Serialize for Jws<'_, T>

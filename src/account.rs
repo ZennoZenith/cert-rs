@@ -1,5 +1,6 @@
 //! Account Management
 //!
+//!
 //! Create an account on an ACME server and perform some modifications to
 //! the account after it has been created.
 
@@ -307,13 +308,6 @@ impl Account {
         private_key: &PrivateKey,
         new_account: NewAccount,
     ) -> Result<Self> {
-        #[derive(Deserialize)]
-        struct IntermidiateAccount {
-            status: AccountStatus,
-            #[serde(rename = "orders")]
-            _orders: Option<Url>,
-        }
-
         let url = &client.directory.new_account;
 
         let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
@@ -327,13 +321,13 @@ impl Account {
         // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
         let kid: Kid = extract_location_header(response.headers()).map(Into::into)?;
 
-        let intermediate_account = response
-            .json::<IntermidiateAccount>()
+        let account_object = response
+            .json::<AccountObject>()
             .await
             .map_err(|_| Error::Unimplemented("Cannot extact account status".into()))?;
 
-        if intermediate_account.status != AccountStatus::Valid {
-            return Err(Error::AccountStatusNoValid(intermediate_account.status));
+        if account_object.status != AccountStatus::Valid {
+            return Err(Error::AccountStatusNoValid(account_object.status));
         }
 
         let directory_url = client.directory_url.clone();
@@ -353,24 +347,31 @@ impl Account {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub fn get_account_object(
-        _client: &Client,
-        _kid: &Kid,
-        _private_key: &PrivateKey,
+    pub async fn get_account_object(
+        client: &Client,
+        private_key: &PrivateKey,
     ) -> Result<AccountObject> {
-        // TODO: [RFC 8555 §7.3](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3)
-        unimplemented!(
-            "Not yet know how to get account object, or is there even a need to get account object"
-        );
+        let new_account = NewAccount {
+            only_return_existing: Some(true),
+            ..Default::default()
+        };
 
-        // let url: &Url = kid;
+        let url = &client.directory.new_account;
 
-        // let auth = JwkOrKid::Kid(kid);
-        // let body = AcmeApiBody::EMPTY_STRING;
+        let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
-        // let response = client.post(url, private_key, auth, body).await?;
+        let auth = JwkOrKid::Jwk(Jwk::from(public_key.clone()));
+        let body = AcmeApiBody::Other(new_account);
 
-        // Ok(response.json().await?)
+        let response = client.post(url, private_key, auth, body).await?;
+
+        let account_object = response
+            .json::<AccountObject>()
+            .await
+            .map_err(|_| Error::Unimplemented("Cannot extact account status".into()))?;
+
+        Ok(account_object)
     }
 
     /// Update account by sending a POST request to the server's account URL (Kid)

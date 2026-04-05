@@ -106,10 +106,11 @@ pub struct Dns01Challenge {
 }
 
 /// TODO: Not defined in rfc 8555
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TlsAlpn01Challenge {
     #[serde(flatten)]
     pub base: ChallengeBase,
+    // TODO:
     // pub token: Box<str>,
 }
 
@@ -128,9 +129,10 @@ pub enum KnownChallenge {
     /// DNS Challenge. Defined in [RFC 8555 §8.4](https://datatracker.ietf.org/doc/html/rfc8555#section-8.4)
     #[serde(rename = "dns-01")]
     Dns01(Dns01Challenge),
-    // // TODO: tls-alpn-01 is not defined in RFC 8555
-    // #[serde(rename = "tls-alpn-01")]
-    // TlsAlpn01(TlsAlpn01Challenge),
+
+    // TODO: tls-alpn-01 is not defined in RFC 8555
+    #[serde(rename = "tls-alpn-01")]
+    TlsAlpn01(TlsAlpn01Challenge),
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -169,7 +171,8 @@ impl KnownChallenge {
     pub const fn base(&self) -> &ChallengeBase {
         match self {
             Self::Http01(Http01Challenge { base, .. })
-            | Self::Dns01(Dns01Challenge { base, .. }) => base,
+            | Self::Dns01(Dns01Challenge { base, .. })
+            | Self::TlsAlpn01(TlsAlpn01Challenge { base, .. }) => base,
         }
     }
 
@@ -179,6 +182,7 @@ impl KnownChallenge {
         match self {
             Self::Http01(Http01Challenge { token, .. })
             | Self::Dns01(Dns01Challenge { token, .. }) => Some(token),
+            Self::TlsAlpn01(_) => None,
         }
     }
 
