@@ -188,7 +188,7 @@ impl KnownChallenge {
     /// by sending an empty JSON body ("{}") carried in a POST request to the
     /// challenge URL (not the authorization URL)
     ///
-    /// Refer: [RFC 8555 §7.5.1]
+    /// See: [RFC 8555 §7.5.1]
     ///
     /// # Errors
     ///
@@ -214,7 +214,7 @@ impl KnownChallenge {
     /// Explicitly request a retry by re-sending response to a challenge in a
     /// new POST request.
     ///
-    /// Refer: [RFC 8555 §8.2]
+    /// See: [RFC 8555 §8.2]
     ///
     /// # Errors
     ///

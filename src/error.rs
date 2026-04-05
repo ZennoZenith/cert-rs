@@ -1,36 +1,47 @@
+use crate::{ApiError, account::AccountStatus};
+
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    /// Wraps an [`ApiError`] returned during HTTP communication with the ACME server.
     #[error(transparent)]
-    Api(#[from] crate::api::Error),
+    Api(#[from] ApiError),
 
-    #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
-
+    /// The provided string could not be parsed as a valid URL.
     #[error(transparent)]
     Url(#[from] url::ParseError),
 
+    /// The ACME directory response could not be parsed into the expected structure.
     #[error("{0}")]
     DirectoryParse(String),
 
-    #[error("{0}")]
-    ResponseToText(String),
-
+    /// The order does not contain a certificate URL, likely because it has not been finalized yet.
     #[error("Certificate url not present order")]
     CertificateUrlNotPresent,
 
+    /// CSR generation or encoding failed.
     #[error("{0}")]
     Csr(String),
 
+    /// A code path that is not yet implemented was reached.
     #[error("{0}")]
-    Unimplemented(String),
+    Unimplemented(Box<str>),
 
+    /// The account status is not valid for the attempted operation.
     #[error("{0}")]
-    AccountStatusNoValid(String),
+    AccountStatusNoValid(AccountStatus),
 
+    /// Key rollover was aborted because an account derived from the provided
+    /// private key already exists. The existing account will be used instead.
     #[error(
         "Key rollover aborted: an account derived from the provided private key already exists; using existing account instead."
     )]
     ExistingAccountDuringKeyRollover,
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(value: reqwest::Error) -> Self {
+        Self::Api(ApiError::from(value))
+    }
 }

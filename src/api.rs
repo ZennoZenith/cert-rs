@@ -16,42 +16,65 @@ pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    /// The HTTP request failed due to a network error, timeout, or other transport-level issue.
     #[error(transparent)]
     Reqwest(#[from] reqwest::Error),
 
-    #[error(transparent)]
-    HeaderToStr(#[from] http::header::ToStrError),
-
-    #[error(transparent)]
-    MimeFromStr(#[from] mime::FromStrError),
-
-    #[error("{0}")]
-    JsonParse(String),
-
+    /// The response `Content-Type` header is missing or could not be extracted.
     #[error("Cannot extract content-type from response")]
     ContentType,
 
-    #[error("Max Nonce Retry reached. max = {0}")]
-    MaxNonceRetry(usize),
+    /// The `Content-Type` header value could not be parsed as a MIME type.
+    #[error(transparent)]
+    MimeFromStr(#[from] mime::FromStrError),
 
-    #[error("{0}")]
-    AcmeErrorParse(String),
-
-    #[error("{0}")]
-    AcmeError(AcmeError),
-
+    /// The response MIME type is not an accepted ACME media type.
     #[error("Invalid Mime: {0}")]
     InvalidContentType(Mime),
 
-    /// Header name does not exist
+    /// The server returned a well-formed ACME problem document.
+    ///
+    /// See [RFC 8555 §6.7](https://datatracker.ietf.org/doc/html/rfc8555#section-6.7).
     #[error("{0}")]
-    MissingHeaderName(&'static str),
+    AcmeError(AcmeError),
 
-    /// Header value does not exist
+    /// The response body could not be parsed as JSON.
     #[error("{0}")]
-    MissingHeaderValue(&'static str),
+    JsonParse(Box<str>),
+
+    /// The server returned an ACME error response but the problem document body could not be parsed.
+    #[error("{0}")]
+    AcmeErrorParse(Box<str>),
+
+    /// Nonce replay retries were exhausted without a successful response.
+    ///
+    /// See [RFC 8555 §6.5](https://datatracker.ietf.org/doc/html/rfc8555#section-6.5).
+    #[error("Max Nonce Retry reached. max = {0}")]
+    MaxNonceRetry(usize),
+
+    /// A response header value could not be converted to a UTF-8 string.
+    #[error(transparent)]
+    HeaderToStr(#[from] http::header::ToStrError),
+
+    /// The `Location` header is missing from a response that requires it.
+    #[error("Location Header does not exist.")]
+    MissingLocationHeader,
+
+    /// The `Location` header value could not be parsed as a URL.
+    #[error("Cannot parse location header as Url.")]
+    LocationHeaderNotUrl,
+
+    /// The `replay-nonce` header is missing from a response that requires it.
+    #[error("replay-nonce Header does not exist.")]
+    MissingReplayNonceHeader,
 }
 
+/// # ACME problem document
+///
+/// See: [RFC 8555 §6.7](https://datatracker.ietf.org/doc/html/rfc8555#section-6.7)
+///
+/// # Example
+///
 /// ```json
 /// {
 ///    "type": "urn:ietf:params:acme:error:malformed",
@@ -201,19 +224,25 @@ impl<'de> Deserialize<'de> for AcmeErrorType {
     }
 }
 
+/// # Error
+///
+/// - [``Error::MissingLocationHeader``]
+/// - [``Error::LocationHeaderNotUrl``]
 pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
-    headers
-        .get(LOCATION)
-        // TODO: handle error
-        .and_then(|v| v.to_str().unwrap_or_default().parse::<Url>().ok())
-        .ok_or(Error::MissingHeaderName(LOCATION.as_str()))
+    let location_header = headers.get(LOCATION).ok_or(Error::MissingLocationHeader)?;
+
+    location_header
+        .to_str()
+        .map_err(|_| Error::LocationHeaderNotUrl)?
+        .parse::<Url>()
+        .map_err(|_| Error::LocationHeaderNotUrl)
 }
 
 async fn parse_acme_error(response: Response) -> Result<AcmeError> {
     response
         .json::<AcmeError>()
         .await
-        .map_err(|e| Error::AcmeErrorParse(e.to_string()))
+        .map_err(|e| Error::AcmeErrorParse(Box::from(e.to_string())))
 }
 
 pub trait RequestBuilderExt {

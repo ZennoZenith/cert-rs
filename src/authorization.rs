@@ -108,7 +108,7 @@ impl Authorization {
     /// To check on the status of an authorization, sends a POST- as-GET request
     /// to the authorization URL
     ///
-    /// Refer [RFC 8555 §7.5.1]
+    /// See [RFC 8555 §7.5.1]
     ///
     /// # Errors
     ///
@@ -132,7 +132,7 @@ impl Authorization {
     ///
     /// To relinquish its authorization to issue certificates for an identifier.
     ///
-    /// Refer [RFC 8555 §7.5.2]
+    /// See [RFC 8555 §7.5.2]
     ///
     /// # Errors
     ///
@@ -160,9 +160,9 @@ impl Authorization {
     ///
     /// The "||" operator indicates concatenation of strings.
     ///
-    /// Used when responding [``Http01Challenge``]
+    /// Used when responding [``crate::challenge::Http01Challenge``]
     ///
-    /// Refer [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
+    /// See [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
     ///
     /// # Example
     ///
@@ -176,9 +176,9 @@ impl Authorization {
     ///
     /// Computation specified in [RFC 7638](https://datatracker.ietf.org/doc/html/rfc7638), using the SHA-256 digest [FIPS180-4]
     ///
-    /// Used when responding [``Dns01Challenge``]
+    /// Used when responding [``crate::challenge::Dns01Challenge``]
     ///
-    /// Refer [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1),
+    /// See [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1),
     /// [RFC 8555 §8.4](https://datatracker.ietf.org/doc/html/rfc8555#section-8.4)
     ///
     /// # Example

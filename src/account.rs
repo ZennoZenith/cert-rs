@@ -213,7 +213,7 @@ impl AccountCredentials {
     /// TODO: Write error docs
     pub fn load_from_parts(directory_url: Url, kid: Kid, private_key: PrivateKey) -> Result<Self> {
         let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
         let jwk = public_key.into();
 
         Ok(Self {
@@ -280,7 +280,7 @@ impl Account {
     /// Fetch account by sending a POST request to the server's newAccount URL.
     /// Will not create a new account if one does not already exist.
     ///
-    /// Refer [RFC 8555 §7.3.1](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.1)
+    /// See [RFC 8555 §7.3.1](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.1)
     ///
     /// # Errors
     ///
@@ -317,7 +317,7 @@ impl Account {
         let url = &client.directory.new_account;
 
         let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         let auth = JwkOrKid::Jwk(Jwk::from(public_key.clone()));
         let body = AcmeApiBody::Other(new_account);
@@ -333,9 +333,7 @@ impl Account {
             .map_err(|_| Error::Unimplemented("Cannot extact account status".into()))?;
 
         if intermediate_account.status != AccountStatus::Valid {
-            return Err(Error::AccountStatusNoValid(
-                intermediate_account.status.to_string(),
-            ));
+            return Err(Error::AccountStatusNoValid(intermediate_account.status));
         }
 
         let directory_url = client.directory_url.clone();
@@ -380,7 +378,7 @@ impl Account {
     /// Will ignore any updates to the "orders" field, "termsOfServiceAgreed" field,
     /// the "status" field.
     ///
-    /// Refer: [RFC 8555 §7.3.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.2)
+    /// See: [RFC 8555 §7.3.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.2)
     ///
     /// # Errors
     ///
@@ -396,7 +394,7 @@ impl Account {
         let url = &self.credentials.kid;
 
         let public_key = rsa_private_to_rsa_public(self.credentials.private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         let auth = JwkOrKid::Kid(&self.credentials.kid);
         let body = AcmeApiBody::Other(update_account);
@@ -412,9 +410,7 @@ impl Account {
             .map_err(|_| Error::Unimplemented("Cannot extact account status".into()))?;
 
         if intermediate_account.status != AccountStatus::Valid {
-            return Err(Error::AccountStatusNoValid(
-                intermediate_account.status.to_string(),
-            ));
+            return Err(Error::AccountStatusNoValid(intermediate_account.status));
         }
 
         let jwk = public_key.into();
@@ -438,7 +434,7 @@ impl Account {
     /// If key rollover is success, You should abandon current [Account] and start
     /// using returned [Account]
     ///
-    /// Refer: [RFC 8555 §7.3.5]
+    /// See: [RFC 8555 §7.3.5]
     ///
     /// # Errors
     ///
@@ -460,7 +456,7 @@ impl Account {
     ///
     /// If key rollover is success, current [Account] is updated.
     ///
-    /// Refer: [RFC 8555 §7.3.5]
+    /// See: [RFC 8555 §7.3.5]
     ///
     /// # Errors
     ///
@@ -481,12 +477,12 @@ impl Account {
 
         let old_private_key = &self.credentials.private_key;
         let old_public_key = rsa_private_to_rsa_public(old_private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
         let old_key_jwk = Jwk::from(old_public_key);
         let old_auth = JwkOrKid::Kid(&self.credentials.kid);
 
         let inner_public_key = rsa_private_to_rsa_public(new_private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
         let inner_auth = JwkOrKid::Jwk(Jwk::from(inner_public_key));
 
         let inner_body = AcmeApiBody::Other(InnerPayload {
@@ -501,9 +497,9 @@ impl Account {
             Ok(v) => match v.status() {
                 StatusCode::OK => Self::fetch(self.client.clone(), &new_private_key).await,
                 StatusCode::CONFLICT => Err(Error::ExistingAccountDuringKeyRollover),
-                status_code => Err(Error::Unimplemented(format!(
+                status_code => Err(Error::Unimplemented(Box::from(format!(
                     "Invalid status code recieved when key rollover: {status_code}",
-                ))),
+                )))),
             },
             Err(e) => {
                 if let crate::api::Error::AcmeError(acme_error_type) = &e
@@ -527,7 +523,7 @@ impl Account {
 
     /// Account Deactivation
     ///
-    /// Refer: [RFC 8555 §7.3.6](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6)
+    /// See: [RFC 8555 §7.3.6](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6)
     ///
     /// # Errors
     ///

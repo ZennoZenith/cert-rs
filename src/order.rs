@@ -269,20 +269,23 @@ impl Order {
     ///   URL to the "certificate" field of the order. Download the
     ///   certificate.
     ///
-    /// Refer [RFC 8555 §7.4](https://datatracker.ietf.org/doc/html/rfc8555#section-7.4)
+    /// See [RFC 8555 §7.4](https://datatracker.ietf.org/doc/html/rfc8555#section-7.4)
     ///
     /// # Errors
     ///
     /// TODO: Write error docs
     pub async fn finalize(&self, account: &Account) -> Result<X509Req> {
-        let domain_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
-        let domain_private_key =
-            PKey::from_rsa(domain_key).map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let domain_key =
+            Rsa::generate(4096).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let domain_private_key = PKey::from_rsa(domain_key)
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         let domains: Vec<&str> = self.identifiers.iter().map(|v| v.value.as_str()).collect();
         let csr = csr::generate_csr(&domain_private_key, &domains)
-            .map_err(|e| Error::Unimplemented(e.to_string()))?;
-        let csr_der_bytes = csr.to_der().map_err(|e| Error::Unimplemented(e.to_string()))?;
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let csr_der_bytes = csr
+            .to_der()
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
 
         let url = &self.finalize;
@@ -302,7 +305,7 @@ impl Order {
 
     /// Download the issued certificate, sends a POST- as-GET request to the certificate URL.
     ///
-    /// Refer [RFC 8555 §7.4.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.4.2)
+    /// See [RFC 8555 §7.4.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.4.2)
     ///
     /// # Errors
     ///

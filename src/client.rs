@@ -74,6 +74,9 @@ impl Client {
         self.nonce_store.lock().await.push_back(nonce);
     }
 
+    /// # Error
+    ///
+    /// - [``Error::MissingReplayNonceHeader``]
     async fn nonce(&self) -> ApiResult<Box<str>> {
         let value = self.nonce_store.lock().await.pop_front();
 
@@ -90,7 +93,7 @@ impl Client {
 
         let headers = response.headers();
 
-        Self::extract_nonce(headers).ok_or(ApiError::MissingHeaderName("replay-nonce"))
+        Self::extract_nonce(headers).ok_or(ApiError::MissingReplayNonceHeader)
     }
 
     pub(crate) async fn post<T: Clone + fmt::Debug + Serialize>(

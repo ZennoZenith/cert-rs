@@ -46,9 +46,20 @@ pub struct DirectoryMeta {
 }
 
 impl Directory {
+    /// Fetches and constructs a [`Directory`] from the given ACME directory URL using the provided HTTP client.
+    ///
+    /// This is useful when you need to reuse an existing [`reqwest::Client`] (e.g. to share
+    /// connection pools or custom TLS configuration) rather than using the default client.
+    ///
+    /// # Arguments
+    ///
+    /// * `client` - The HTTP client to use for the request
+    /// * `url` - The ACME directory URL (e.g. `https://acme-v02.api.letsencrypt.org/directory`)
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
+    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [Self]
     pub async fn new_from_url_with_client(client: &reqwest::Client, url: &Url) -> Result<Self> {
         let response = client
             .get(url.as_str())
@@ -61,12 +72,22 @@ impl Directory {
         response
             .json()
             .await
-            .map_err(|e| Error::ResponseToText(e.to_string()))
+            .map_err(|e| Error::DirectoryParse(e.to_string()))
     }
 
+    /// Fetches and constructs a [Self] from the given ACME directory URL using a default HTTP client.
+    ///
+    /// For cases where you need custom client configuration such as connection pooling or TLS settings,
+    /// use [``Self::new_from_url_with_client``] instead.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - The ACME directory URL (e.g. `https://acme-v02.api.letsencrypt.org/directory`)
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
+    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [`Self`]
     pub async fn new_from_url(url: &Url) -> Result<Self> {
         let response = reqwest::Client::new()
             .get(url.as_str())
@@ -79,33 +100,59 @@ impl Directory {
         response
             .json()
             .await
-            .map_err(|e| Error::ResponseToText(e.to_string()))
+            .map_err(|e| Error::DirectoryParse(e.to_string()))
     }
 
+    /// Constructs a [Self] by deserializing a JSON string.
+    ///
+    /// Useful when you have already fetched the directory response and want to avoid an additional
+    /// HTTP request, or for testing with a cached directory payload.
+    ///
+    /// # Arguments
+    ///
+    /// * `directory_json` - A JSON string representing the ACME directory object
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// - [``Error::DirectoryParse``] — `directory_json` could not be deserialized into [Self]
+    ///
     pub fn new_from_json(directory_json: &str) -> Result<Self> {
         serde_json::from_str(directory_json).map_err(|e| Error::DirectoryParse(e.to_string()))
     }
 
+    /// Fetches and constructs a [Self] from the Let's Encrypt production endpoint.
+    ///
+    /// For staging/testing, use [``Self::lets_encrypt_staging``] to avoid hitting production rate limits.
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// - [``Error::Url``] — Let's Encrypt production URL could not be parsed
+    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
+    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [Self]
     pub async fn lets_encrypt() -> Result<Self> {
         Self::new_from_url(&Url::try_from(LetsEncrypt::Production)?).await
     }
 
+    /// Fetches and constructs a [Self] from the Let's Encrypt staging endpoint.
+    ///
+    /// For production, use [``Self::lets_encrypt``].
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// - [``Error::Url``] — Let's Encrypt production URL could not be parsed
+    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
+    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [Self]
     pub async fn lets_encrypt_staging() -> Result<Self> {
         Self::new_from_url(&Url::try_from(LetsEncrypt::Staging)?).await
     }
 
+    /// Fetches and constructs a [Directory] from the `ZeroSSL` production endpoint.
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// - [``Error::Url``] — `ZeroSSL` production URL could not be parsed
+    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
+    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [Self]
     pub async fn zero_ssl() -> Result<Self> {
         Self::new_from_url(&Url::try_from(ZeroSsl::Production)?).await
     }

@@ -25,7 +25,7 @@ pub mod challenge;
 pub mod directory;
 pub mod order;
 
-pub use api::{AcmeError, AcmeErrorType};
+pub use api::{AcmeError, AcmeErrorType, Error as ApiError};
 pub use authentication::PrivateKey;
 pub use client::Client;
 pub use directory::{LetsEncrypt, ZeroSsl};

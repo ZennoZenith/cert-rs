@@ -173,7 +173,7 @@ pub struct Jwk {
 
     /// jwk -> to json -> sha256 hash -> base64url
     ///
-    /// Refer: [RFC 7638 §7.3](https://datatracker.ietf.org/doc/html/rfc7638), [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
+    /// See: [RFC 7638 §7.3](https://datatracker.ietf.org/doc/html/rfc7638), [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
     #[serde(skip_serializing)]
     thumbprint: Box<str>,
 }
@@ -181,7 +181,7 @@ pub struct Jwk {
 impl Jwk {
     /// jwk -> to json -> sha256 hash -> base64url
     ///
-    /// Refer: [RFC 7638 §7.3](https://datatracker.ietf.org/doc/html/rfc7638), [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
+    /// See: [RFC 7638 §7.3](https://datatracker.ietf.org/doc/html/rfc7638), [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
     pub fn thumbprint(&self) -> &str {
         &self.thumbprint
     }
@@ -261,7 +261,8 @@ impl PrivateKey {
     /// TODO: Write error docs
     pub fn new() -> Result<Self> {
         // TODO: could this be created without throwing error?
-        let private_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let private_key =
+            Rsa::generate(4096).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
         Ok(Self(private_key))
     }
 
@@ -273,7 +274,7 @@ impl PrivateKey {
     pub fn to_pkcs1_der(&self) -> Result<Vec<u8>> {
         self.0
             .private_key_to_der()
-            .map_err(|e| Error::Unimplemented(e.to_string()))
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))
     }
 
     /// Export as PKCS#8 DER
@@ -282,11 +283,11 @@ impl PrivateKey {
     ///
     /// TODO: Write error docs
     pub fn to_pkcs8_der(&self) -> Result<Vec<u8>> {
-        let pkey =
-            PKey::from_rsa(self.0.clone()).map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let pkey = PKey::from_rsa(self.0.clone())
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         pkey.private_key_to_der()
-            .map_err(|e| Error::Unimplemented(e.to_string()))
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))
     }
 
     /// Export as PKCS#8 DER Base64 encoded
@@ -303,13 +304,16 @@ impl PrivateKey {
     /// TODO: Write error docs
     pub fn from_pkcs8_der_base64(value: &str) -> Result<Self> {
         // Decode base64 → DER bytes
-        let der = b64::b64u_decode(value).map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let der =
+            b64::b64u_decode(value).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         // Parse PKCS#8 → PKey → RSA
-        let pkey =
-            PKey::private_key_from_der(&der).map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let pkey = PKey::private_key_from_der(&der)
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
-        let rsa = pkey.rsa().map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let rsa = pkey
+            .rsa()
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
         Ok(Self(rsa))
     }
 }
