@@ -28,4 +28,9 @@ pub enum Error {
 
     #[error("{0}")]
     AccountStatusNoValid(String),
+
+    #[error(
+        "Key rollover aborted: an account derived from the provided private key already exists; using existing account instead."
+    )]
+    ExistingAccountDuringKeyRollover,
 }

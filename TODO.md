@@ -1,7 +1,7 @@
 # TODO
 
 - Profiles Meta
-- struct Base64(String)
+- Recheck struct Base64(String) Serialize
 - Correct scoping of modules
 - Better error types
 - jwk_thumbprint variable name could be rename to something better

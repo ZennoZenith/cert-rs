@@ -104,8 +104,13 @@ impl Client {
             let nonce = self.nonce().await?;
 
             // TODO: try to optimize auth and body clones
-            let jws =
-                Jws::new_from_parts(private_key, url, auth.clone(), nonce.as_ref(), body.clone());
+            let jws = Jws::new_from_parts(
+                private_key,
+                url,
+                auth.clone(),
+                Some(nonce.as_ref()),
+                body.clone(),
+            );
 
             let maybe_response = self
                 .client

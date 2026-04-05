@@ -5,13 +5,16 @@
 
 use std::sync::Arc;
 
+use http::StatusCode;
 use serde::{Deserialize, Serialize, Serializer, de, ser::SerializeStruct as _};
 use url::Url;
 
 use crate::{
     Client, Error, Result,
     api::{AcmeApiBody, extract_location_header},
-    authentication::{Jwk, JwkOrKid, JwkThumbprint, Kid, PrivateKey, rsa_private_to_rsa_public},
+    authentication::{
+        Jwk, JwkOrKid, JwkThumbprint, Jws, Kid, PrivateKey, rsa_private_to_rsa_public,
+    },
 };
 
 /// New Account
@@ -208,11 +211,6 @@ impl<'de> serde::de::Deserialize<'de> for AccountCredentials {
 }
 
 impl AccountCredentials {
-    #[must_use]
-    pub fn jwk_thumbprint(&self) -> &str {
-        &self.jwk_thumbprint
-    }
-
     /// # Errors
     ///
     /// TODO: Write error docs
@@ -263,20 +261,17 @@ impl Account {
         &self.credentials
     }
 
-    #[must_use]
-    pub fn jwk_thumbprint(&self) -> &str {
-        &self.credentials.jwk_thumbprint
-    }
-
-    /// Create new account by sending a POST request to the server's newAccount URL
+    /// Create new account or fetch existing by sending a POST request to the server's newAccount URL
     /// Will overwrite `new_account.only_return_existing` to false.
     ///
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn create(client: Client, new_account: NewAccount) -> Result<Self> {
-        let private_key = PrivateKey::new()?;
-
+    pub async fn create(
+        client: Arc<Client>,
+        private_key: PrivateKey,
+        new_account: NewAccount,
+    ) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(false),
             ..new_account
@@ -286,7 +281,6 @@ impl Account {
     }
 
     /// Fetch account by sending a POST request to the server's newAccount URL.
-    /// Will overwrite `new_account.only_return_existing` to true.
     /// Will not create a new account if one does not already exist.
     ///
     /// Refer [RFC 8555 §7.3.1](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.1)
@@ -296,14 +290,10 @@ impl Account {
     /// Will fail if account does not exist `AcmeErrorType::AccountDoesNotExist`.
     ///
     /// TODO: Write error docs
-    pub async fn fetch(
-        client: Client,
-        private_key: &PrivateKey,
-        new_account: NewAccount,
-    ) -> Result<Self> {
+    pub async fn fetch(client: Arc<Client>, private_key: &PrivateKey) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(true),
-            ..new_account
+            ..Default::default()
         };
 
         Self::fetch_or_create(client, private_key, new_account).await
@@ -316,7 +306,7 @@ impl Account {
     ///
     /// TODO: Write error docs
     pub async fn fetch_or_create(
-        client: Client,
+        client: Arc<Client>,
         private_key: &PrivateKey,
         new_account: NewAccount,
     ) -> Result<Self> {
@@ -355,7 +345,7 @@ impl Account {
         let directory_url = client.directory_url.clone();
 
         Ok(Self {
-            client: Arc::new(client),
+            client,
             credentials: AccountCredentials {
                 kid,
                 private_key: private_key.clone(),
@@ -392,6 +382,8 @@ impl Account {
     ///
     /// Will ignore any updates to the "orders" field, "termsOfServiceAgreed" field,
     /// the "status" field.
+    ///
+    /// Refer: [RFC 8555 §7.3.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.2)
     ///
     /// # Errors
     ///
@@ -441,12 +433,100 @@ impl Account {
         })
     }
 
-    // TODO: External Account Binding.
-    // Defined in [RFC 8555 §7.3.4](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.4).
-    //
-    // TODO: Account Key Rollover
-    // Defined in [RFC 8555 §7.3.5](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5).
-    //
+    /// Account Key Rollover
+    ///
+    /// Update account public key associated with an account by sending a POST
+    /// request to the server's keyChange URL
+    ///
+    /// If key rollover is success It should abandon current [Account] and start
+    /// using returned [Account]
+    ///
+    /// Refer: [RFC 8555 §7.3.5]
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    ///
+    /// # Panics
+    ///
+    /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
+    pub async fn key_rollover(&self, new_private_key: PrivateKey) -> Result<Self> {
+        #[derive(Debug, Clone, Serialize)]
+        #[serde(rename_all = "camelCase")]
+        struct InnerPayload<'a> {
+            account: &'a Kid,
+            old_key: Jwk,
+        }
+
+        let url = &self.client.directory.key_change;
+
+        let old_private_key = &self.credentials.private_key;
+        let old_public_key = rsa_private_to_rsa_public(old_private_key.rsa_key())
+            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let old_key_jwk = Jwk::from(old_public_key);
+        let old_auth = JwkOrKid::Kid(&self.credentials.kid);
+
+        let inner_public_key = rsa_private_to_rsa_public(new_private_key.rsa_key())
+            .map_err(|e| Error::Unimplemented(e.to_string()))?;
+        let inner_auth = JwkOrKid::Jwk(Jwk::from(inner_public_key));
+
+        let inner_body = AcmeApiBody::Other(InnerPayload {
+            account: &self.credentials.kid,
+            old_key: old_key_jwk,
+        });
+
+        let payload = Jws::new_from_parts(&new_private_key, url, inner_auth, None, inner_body);
+        let body = AcmeApiBody::Other(payload);
+
+        match self.client.post(url, old_private_key, old_auth, body).await {
+            Ok(v) => match v.status() {
+                StatusCode::OK => Self::fetch(self.client.clone(), &new_private_key).await,
+                StatusCode::CONFLICT => Err(Error::ExistingAccountDuringKeyRollover),
+                status_code => Err(Error::Unimplemented(format!(
+                    "Invalid status code recieved when key rollover: {status_code}",
+                ))),
+            },
+            Err(e) => {
+                if let crate::api::Error::AcmeError(acme_error_type) = &e
+                    && let crate::api::AcmeErrorType::Unknown(v) = &acme_error_type.type_
+                    && v.as_ref() == "conflict"
+                {
+                    return Err(Error::ExistingAccountDuringKeyRollover);
+                }
+
+                Err(Error::Api(e))
+            }
+        }
+    }
+
+    /// Account Key Rollover
+    ///
+    /// Update account public key associated with an account by sending a POST
+    /// request to the server's keyChange URL
+    ///
+    /// If key rollover is success, current [Account] is updated.
+    ///
+    /// Refer: [RFC 8555 §7.3.5]
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    ///
+    /// # Panics
+    ///
+    /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
+    pub async fn key_rollover_mut(&mut self, new_private_key: PrivateKey) -> Result<()> {
+        let new_account = self.key_rollover(new_private_key).await?;
+
+        self.client = new_account.client;
+        self.credentials = new_account.credentials;
+
+        Ok(())
+    }
+
     // TODO: Account Deactivation
     // Defined in [RFC 8555 §7.3.6](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6).
+    //
+    // TODO: External Account Binding.
+    // Defined in [RFC 8555 §7.3.4](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.4).
 }

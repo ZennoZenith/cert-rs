@@ -1,6 +1,6 @@
 use http::{
     HeaderMap, HeaderValue,
-    header::{CONTENT_TYPE, LOCATION, USER_AGENT},
+    header::{CONTENT_LENGTH, CONTENT_TYPE, LOCATION, USER_AGENT},
 };
 use mime::Mime;
 use reqwest::{RequestBuilder, Response};
@@ -249,11 +249,17 @@ impl ResponseExt for Response {
     async fn handle_response_error(self) -> Result<Self> {
         let headers = self.headers();
 
-        let Some(ct) = headers.get(CONTENT_TYPE) else {
+        if let Some(content_length) = headers.get(CONTENT_LENGTH)
+            && content_length == HeaderValue::from_static("0")
+        {
+            return Ok(self);
+        }
+
+        let Some(content_type) = headers.get(CONTENT_TYPE) else {
             return Err(Error::ContentType);
         };
 
-        let mime: Mime = ct.to_str()?.parse()?;
+        let mime: Mime = content_type.to_str()?.parse()?;
 
         if mime.type_() == mime::APPLICATION
             && mime.subtype() == "problem"
@@ -286,7 +292,7 @@ impl ResponseExt for Response {
 #[derive(Debug, Clone)]
 pub enum AcmeApiBody<T = ()>
 where
-    T: Serialize + fmt::Debug,
+    T: Serialize + Clone + fmt::Debug,
 {
     EmptyString,
     EmptyObject,

@@ -22,10 +22,10 @@ pub fn rsa_private_to_rsa_public(
     Rsa::public_key_from_pem(&public_key_pem)
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Base64uEncoded<T>(T);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Jws<'a, T: Serialize + Clone + fmt::Debug> {
     /// TODO: Require to create signature (`{protected_b64}.{payload_b64}`)
     private_key: &'a PrivateKey,
@@ -106,7 +106,7 @@ where
         private_key: &'a PrivateKey,
         url: &'a Url,
         auth: JwkOrKid<'a>,
-        nonce: &'a str,
+        nonce: Option<&'a str>,
         body: AcmeApiBody<T>,
     ) -> Self {
         let jws_protected_headers = JwsProtectedHeaders {
@@ -120,14 +120,16 @@ where
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct JwsProtectedHeaders<'a> {
     #[serde(rename = "alg")]
     pub algorithm: JwsAlgorithm,
     pub url: &'a Url,
     #[serde(flatten)]
     pub auth: JwkOrKid<'a>,
-    pub nonce: &'a str,
+
+    /// For key rollover inner `JwsProtectedHeaders` does not have nonce,
+    pub nonce: Option<&'a str>,
 }
 
 #[derive(
@@ -217,10 +219,14 @@ impl<'de> serde::de::Deserialize<'de> for PrivateKey {
 }
 
 impl PrivateKey {
+    #[must_use]
     pub const fn rsa_key(&self) -> &Rsa<Private> {
         &self.0
     }
 
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub fn new() -> Result<Self> {
         // TODO: could this be created without throwing error?
         let private_key = Rsa::generate(4096).map_err(|e| Error::Unimplemented(e.to_string()))?;
@@ -228,6 +234,10 @@ impl PrivateKey {
     }
 
     /// Export as PKCS#1 DER (RSA-specific)
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub fn to_pkcs1_der(&self) -> Result<Vec<u8>> {
         self.0
             .private_key_to_der()
@@ -235,6 +245,10 @@ impl PrivateKey {
     }
 
     /// Export as PKCS#8 DER
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub fn to_pkcs8_der(&self) -> Result<Vec<u8>> {
         let pkey =
             PKey::from_rsa(self.0.clone()).map_err(|e| Error::Unimplemented(e.to_string()))?;
@@ -244,10 +258,17 @@ impl PrivateKey {
     }
 
     /// Export as PKCS#8 DER Base64 encoded
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub fn to_pkcs8_der_base64(&self) -> Result<String> {
         Ok(b64::b64u_encode(self.to_pkcs8_der()?))
     }
 
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub fn from_pkcs8_der_base64(value: &str) -> Result<Self> {
         // Decode base64 → DER bytes
         let der = b64::b64u_decode(value).map_err(|e| Error::Unimplemented(e.to_string()))?;
@@ -367,6 +388,12 @@ impl From<String> for KeyType {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct JwkThumbprint(Box<str>);
+
+impl std::fmt::Display for JwkThumbprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 impl From<Rsa<Public>> for JwkThumbprint {
     fn from(value: Rsa<Public>) -> Self {
@@ -503,7 +530,7 @@ mod tests {
             algorithm: JwsAlgorithm::RS256,
             url: &Url::from_str("https://example.com").expect("Invalid url"),
             auth: JwkOrKid::Kid(&Kid::from_str("https://example.com").expect("Invalid url")),
-            nonce: "some-nonce",
+            nonce: Some("some-nonce"),
         };
 
         let body = AcmeApiBody::EMPTY_STRING;

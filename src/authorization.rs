@@ -168,8 +168,8 @@ impl Authorization {
     ///
     /// `GET /.well-known/acme-challenge/<get_keyauth()>`
     #[must_use]
-    pub fn gen_keyauth(challenge_token: &str, jwk_thumbprint: &str) -> String {
-        format!("{challenge_token}.{jwk_thumbprint}")
+    pub fn gen_keyauth(account: &Account, challenge_token: &str) -> String {
+        format!("{challenge_token}.{}", account.credentials.jwk_thumbprint)
     }
 
     /// Thumbprint
@@ -185,8 +185,8 @@ impl Authorization {
     ///
     /// `_acme-challenge.www.example.org. 300 IN TXT "<gen_sha_256_keyauth()>"`
     #[must_use]
-    pub fn gen_sha_256_keyauth(challenge_token: &str, jwk_thumbprint: &str) -> String {
-        let keyauth = Self::gen_keyauth(challenge_token, jwk_thumbprint);
+    pub fn gen_sha_256_keyauth(account: &Account, challenge_token: &str) -> String {
+        let keyauth = Self::gen_keyauth(account, challenge_token);
         let hash = Sha256::digest(&keyauth).to_vec();
 
         b64::b64u_encode(hash)

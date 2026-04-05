@@ -9,8 +9,10 @@
 #![allow(clippy::multiple_crate_versions)] // FIX:
 // #![allow(dead_code)] // FIX: For exploratory dev.
 
+use std::sync::Arc;
+
 use cert_rs::{
-    Client, Error, LetsEncrypt,
+    Client, Error, LetsEncrypt, PrivateKey,
     account::{Account, NewAccount},
     authorization::Authorization,
     challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
@@ -80,6 +82,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
     });
 
     let client = Client::new(client, directory_url).await?;
+    let arc_client = Arc::from(client);
     // dbg!(&client.directory());
 
     let account_create = NewAccount {
@@ -89,7 +92,13 @@ async fn main() -> color_eyre::eyre::Result<()> {
         ..Default::default()
     };
 
-    let account = Account::create(client, account_create).await?;
+    let private_key_1 = PrivateKey::new()?;
+    let private_key_2 = PrivateKey::new()?;
+
+    let account = Account::create(arc_client.clone(), private_key_1, account_create).await?;
+    println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
+
+    let account = account.key_rollover(private_key_2).await?;
     println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
 
     let domains: Vec<String> =
@@ -127,11 +136,10 @@ async fn main() -> color_eyre::eyre::Result<()> {
         let challenge_url = base.url.clone();
 
         if wildcard {
-            let sha_256_keyauth =
-                Authorization::gen_sha_256_keyauth(token, account.jwk_thumbprint());
+            let sha_256_keyauth = Authorization::gen_sha_256_keyauth(&account, token);
             handle_dns_01_challenge(domain, &sha_256_keyauth).await?;
         } else {
-            let keyauth = Authorization::gen_keyauth(token, account.jwk_thumbprint());
+            let keyauth = Authorization::gen_keyauth(&account, token);
             handle_http_01_challenge(token, &keyauth).await?;
         }
 
