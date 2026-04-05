@@ -99,7 +99,14 @@ async fn main() -> color_eyre::eyre::Result<()> {
     println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
 
     let account = account.key_rollover(private_key_2).await?;
+    //// OR
+    // account.key_rollover_mut(private_key_2).await?;
     println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
+
+    //// Account deactivated
+    // let account_cred = account.credentials().to_owned();
+    // account.deactivate().await?;
+    // let account = Account::load(arc_client.clone(), account_cred);
 
     let domains: Vec<String> =
         vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];

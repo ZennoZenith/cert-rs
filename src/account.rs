@@ -238,7 +238,7 @@ pub struct Account {
 }
 
 impl Account {
-    pub fn load(client: Client, credentials: AccountCredentials) -> Self {
+    pub fn load(client: Arc<Client>, credentials: AccountCredentials) -> Self {
         if client.directory_url != credentials.directory_url {
             // TODO: add directory url in warn
             #[cfg(feature = "tracing")]
@@ -246,7 +246,7 @@ impl Account {
         }
 
         Self {
-            client: Arc::from(client),
+            client,
             credentials,
         }
     }
@@ -438,7 +438,7 @@ impl Account {
     /// Update account public key associated with an account by sending a POST
     /// request to the server's keyChange URL
     ///
-    /// If key rollover is success It should abandon current [Account] and start
+    /// If key rollover is success, You should abandon current [Account] and start
     /// using returned [Account]
     ///
     /// Refer: [RFC 8555 §7.3.5]
@@ -450,7 +450,29 @@ impl Account {
     /// # Panics
     ///
     /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
-    pub async fn key_rollover(&self, new_private_key: PrivateKey) -> Result<Self> {
+    pub async fn key_rollover(self, new_private_key: PrivateKey) -> Result<Self> {
+        let mut account = self;
+        account.key_rollover_mut(new_private_key).await?;
+        Ok(account)
+    }
+
+    /// Account Key Rollover
+    ///
+    /// Update account public key associated with an account by sending a POST
+    /// request to the server's keyChange URL
+    ///
+    /// If key rollover is success, current [Account] is updated.
+    ///
+    /// Refer: [RFC 8555 §7.3.5]
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    ///
+    /// # Panics
+    ///
+    /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
+    pub async fn key_rollover_mut(&mut self, new_private_key: PrivateKey) -> Result<()> {
         #[derive(Debug, Clone, Serialize)]
         #[serde(rename_all = "camelCase")]
         struct InnerPayload<'a> {
@@ -478,7 +500,7 @@ impl Account {
         let payload = Jws::new_from_parts(&new_private_key, url, inner_auth, None, inner_body);
         let body = AcmeApiBody::Other(payload);
 
-        match self.client.post(url, old_private_key, old_auth, body).await {
+        let new_account_maybe = match self.client.post(url, old_private_key, old_auth, body).await {
             Ok(v) => match v.status() {
                 StatusCode::OK => Self::fetch(self.client.clone(), &new_private_key).await,
                 StatusCode::CONFLICT => Err(Error::ExistingAccountDuringKeyRollover),
@@ -496,27 +518,9 @@ impl Account {
 
                 Err(Error::Api(e))
             }
-        }
-    }
+        };
 
-    /// Account Key Rollover
-    ///
-    /// Update account public key associated with an account by sending a POST
-    /// request to the server's keyChange URL
-    ///
-    /// If key rollover is success, current [Account] is updated.
-    ///
-    /// Refer: [RFC 8555 §7.3.5]
-    ///
-    /// # Errors
-    ///
-    /// TODO: Write error docs
-    ///
-    /// # Panics
-    ///
-    /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
-    pub async fn key_rollover_mut(&mut self, new_private_key: PrivateKey) -> Result<()> {
-        let new_account = self.key_rollover(new_private_key).await?;
+        let new_account = new_account_maybe?;
 
         self.client = new_account.client;
         self.credentials = new_account.credentials;
@@ -524,9 +528,28 @@ impl Account {
         Ok(())
     }
 
-    // TODO: Account Deactivation
-    // Defined in [RFC 8555 §7.3.6](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6).
-    //
+    /// Account Deactivation
+    ///
+    /// Refer: [RFC 8555 §7.3.6](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6)
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub async fn deactivate(self) -> Result<()> {
+        let url = &self.credentials.kid.as_url();
+
+        let auth = JwkOrKid::Kid(&self.credentials.kid);
+        let body = AcmeApiBody::Other(serde_json::json!({
+           "status": "deactivated"
+        }));
+
+        self.client
+            .post(url, &self.credentials.private_key, auth, body)
+            .await?;
+
+        Ok(())
+    }
+
     // TODO: External Account Binding.
     // Defined in [RFC 8555 §7.3.4](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.4).
 }
