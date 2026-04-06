@@ -17,6 +17,7 @@ mod b64;
 mod client;
 mod csr;
 mod error;
+mod new_auth;
 mod time;
 
 pub mod account;

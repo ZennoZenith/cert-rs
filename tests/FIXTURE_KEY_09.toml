@@ -1,0 +1,30 @@
+type = "EC"
+curve = "P-521"
+signingAlgo = "ES512"
+x = "0zGtXvPJXXTtCOvKjv7mE_GLvGq2L-WKpaO_WigW0pSkauEfBY0cP_fRNO8a_04TGtkP_XyNiu2b30TjKJjq640"
+y = "ATz8LM7yWoPt8IGKCOOezSzQfCtcKpX6RgZ2mla0mmWXw6lIokqWPlLaAfrv8KZFRwaUUUD0sr0hjRq4fSgbMOK6"
+privateKeyPem = """
+-----BEGIN PRIVATE KEY-----
+MIHuAgEAMBAGByqGSM49AgEGBSuBBAAjBIHWMIHTAgEBBEIAIUN+7jQnOAia7JdD
+C+vb+7Xu4x+DvE1tYao0NThlH/tRPNpS9cY6UXyFjbbTyhU9+TuXm2K+e1k3ZSrg
+Me5kiHOhgYkDgYYABADTMa1e88lddO0I68qO/uYT8Yu8arYv5Yqlo79aKBbSlKRq
+4R8FjRw/99E07xr/ThMa2Q/9fI2K7ZvfROMomOrrjQE8/CzO8lqD7fCBigjjns0s
+0HwrXCqV+kYGdppWtJpll8OpSKJKlj5S2gH67/CmRUcGlFFA9LK9IY0auH0oGzDi
+ug==
+-----END PRIVATE KEY-----
+"""
+publicKeyPem = """
+-----BEGIN PUBLIC KEY-----
+MIGbMBAGByqGSM49AgEGBSuBBAAjA4GGAAQA0zGtXvPJXXTtCOvKjv7mE/GLvGq2
+L+WKpaO/WigW0pSkauEfBY0cP/fRNO8a/04TGtkP/XyNiu2b30TjKJjq640BPPws
+zvJag+3wgYoI457NLNB8K1wqlfpGBnaaVrSaZZfDqUiiSpY+UtoB+u/wpkVHBpRR
+QPSyvSGNGrh9KBsw4ro=
+-----END PUBLIC KEY-----
+"""
+jwk = '{"kty":"EC","crv":"P-521","x":"0zGtXvPJXXTtCOvKjv7mE_GLvGq2L-WKpaO_WigW0pSkauEfBY0cP_fRNO8a_04TGtkP_XyNiu2b30TjKJjq640","y":"ATz8LM7yWoPt8IGKCOOezSzQfCtcKpX6RgZ2mla0mmWXw6lIokqWPlLaAfrv8KZFRwaUUUD0sr0hjRq4fSgbMOK6"}'
+jwkThumbprint = "igQt3dYchwzsLOUP3EIfJIbBtEfWhNjXCWtqY4I7JVg"
+url = "https://example.com/"
+nonce = "test-nonce"
+body = "test-body"
+jwsProtectedHeader = '{"nonce":"test-nonce","url":"https://example.com/","alg":"ES512","jwk":{"kty":"EC","crv":"P-521","x":"0zGtXvPJXXTtCOvKjv7mE_GLvGq2L-WKpaO_WigW0pSkauEfBY0cP_fRNO8a_04TGtkP_XyNiu2b30TjKJjq640","y":"ATz8LM7yWoPt8IGKCOOezSzQfCtcKpX6RgZ2mla0mmWXw6lIokqWPlLaAfrv8KZFRwaUUUD0sr0hjRq4fSgbMOK6"}}'
+jws = '{"protected":"eyJub25jZSI6InRlc3Qtbm9uY2UiLCJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tLyIsImFsZyI6IkVTNTEyIiwiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC01MjEiLCJ4IjoiMHpHdFh2UEpYWFR0Q092S2p2N21FX0dMdkdxMkwtV0twYU9fV2lnVzBwU2thdUVmQlkwY1BfZlJOTzhhXzA0VEd0a1BfWHlOaXUyYjMwVGpLSmpxNjQwIiwieSI6IkFUejhMTTd5V29QdDhJR0tDT09lelN6UWZDdGNLcFg2UmdaMm1sYTBtbVdYdzZsSW9rcVdQbExhQWZydjhLWkZSd2FVVVVEMHNyMGhqUnE0ZlNnYk1PSzYifX0","payload":"InRlc3QtYm9keSI","signature":"AWHjlufUD7so6wFo4h1YarOczS3nW5_YmlAZECC6gaPAl6_mBP88u9F57htYGfvdy_WyDWfh0GS_x3UFsH50Khw4ASMvc1VSeck77zDWfOZhwXG-bZIJmydKhjpiNWF_BajGY522DR6g1RBPDxcutBqmpXoUh_hBFBOTV8MABT--tNGH"}'

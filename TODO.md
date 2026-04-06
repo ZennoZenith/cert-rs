@@ -1,9 +1,20 @@
 # TODO
 
+- Impl Copy for enums where possible
+
+- ```rs
+      serde_json::to_string(&serde_json::json!({
+          "e":exponent,
+          "kty":key_type,
+          "n":modulus
+      }))
+  ```
+
+  Should order be preserved?
+
 - PrivateKey
 - Profiles Meta: Is defined in later rfc
 - Better error types
-- Revert Serialize derive where not required
 - Acme Retry-After header
 - tracing support
 - Write documentation from RFC8555

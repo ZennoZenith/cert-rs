@@ -64,7 +64,9 @@ clap = { version = "4", features = ["derive"] }
 colored = "3"
 color-eyre = "0.6"
 fake = { version = "4" }
+glob = "0.3"
 serial_test = "3"
+toml = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
