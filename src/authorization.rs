@@ -119,10 +119,7 @@ impl Authorization {
         let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = EmptyString;
 
-        let response = account
-            .client
-            .post(url, &account.credentials.private_key, auth, body)
-            .await?;
+        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
 
         let authorization = response.json::<Self>().await?;
         Ok(authorization)
@@ -145,10 +142,7 @@ impl Authorization {
            "status": "deactivated"
         });
 
-        let response = account
-            .client
-            .post(url, &account.credentials.private_key, auth, body)
-            .await?;
+        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
 
         let authorization = response.json::<Self>().await?;
         Ok(authorization)

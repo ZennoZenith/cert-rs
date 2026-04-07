@@ -12,7 +12,7 @@
 use std::sync::Arc;
 
 use cert_rs::{
-    Client, Error, LetsEncrypt, PrivateKey,
+    Client, Error, Key, LetsEncrypt,
     account::{Account, NewAccount},
     authorization::Authorization,
     challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
@@ -92,15 +92,17 @@ async fn main() -> color_eyre::eyre::Result<()> {
         ..Default::default()
     };
 
-    let private_key_1 = PrivateKey::new()?;
-    let private_key_2 = PrivateKey::new()?;
+    let key_1 = Key::new_rsa(
+        cert_rs::RsaKeyBits::Bits4096,
+        cert_rs::RsaSigningAlgorithm::Rs256,
+    )?;
+    let key_2 = Key::new_ec(cert_rs::EcCurve::P256)?;
 
-    let account = Account::create(arc_client.clone(), private_key_1, account_create).await?;
-    println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
+    let account = Account::create(arc_client.clone(), key_1, account_create).await?;
 
-    let account = account.key_rollover(private_key_2).await?;
-    //// OR
-    // account.key_rollover_mut(private_key_2).await?;
+    let account = account.key_rollover(key_2).await?;
+    // //// OR
+    // // account.key_rollover_mut(key_2).await?;
     println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
 
     //// Account deactivated

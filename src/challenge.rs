@@ -210,7 +210,7 @@ impl KnownChallenge {
         let body = EmptyObject;
         let response = account
             .client
-            .post(url, &account.credentials.private_key, auth, body)
+            .post(url, &account.credentials.key, auth, body)
             .await?;
 
         let challenge = response.json::<Self>().await?;
@@ -243,7 +243,7 @@ impl KnownChallenge {
         let body = EmptyString;
         let response = account
             .client
-            .post(url, &account.credentials.private_key, auth, body)
+            .post(url, &account.credentials.key, auth, body)
             .await?;
 
         let challenge = response.json::<Self>().await?;

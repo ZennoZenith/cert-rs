@@ -1,7 +1,9 @@
-#![allow(dead_code)]
-
+mod de_serialize;
+mod key_dto;
 mod kid;
 
+use de_serialize::{big_num_to_b64_padded, ec_coord_len};
+pub use key_dto::*;
 pub use kid::Kid;
 
 use openssl::{
@@ -16,18 +18,21 @@ use url::Url;
 
 use crate::{Error, Result, b64};
 
+pub trait Jwa {
+    type Error;
+
+    fn to_jwa(&self) -> &'static str;
+
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    fn from_jwa(value: &str) -> std::result::Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized;
+}
+
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    Serialize,
-    Deserialize,
-    Default,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
+    Debug, Copy, Clone, Serialize, Deserialize, Default, strum_macros::Display, PartialEq, Eq,
 )]
 #[strum(ascii_case_insensitive)]
 #[non_exhaustive]
@@ -42,18 +47,38 @@ pub enum RsaSigningAlgorithm {
     Rs512,
 }
 
+impl From<RsaSigningAlgorithm> for &'static str {
+    fn from(value: RsaSigningAlgorithm) -> Self {
+        match value {
+            RsaSigningAlgorithm::Rs256 => "RS256",
+            RsaSigningAlgorithm::Rs384 => "RS384",
+            RsaSigningAlgorithm::Rs512 => "RS512",
+        }
+    }
+}
+
+impl Jwa for RsaSigningAlgorithm {
+    type Error = String;
+
+    fn to_jwa(&self) -> &'static str {
+        (*self).into()
+    }
+
+    fn from_jwa(value: &str) -> std::result::Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        match value {
+            "RS256" => Ok(Self::Rs256),
+            "RS384" => Ok(Self::Rs384),
+            "RS512" => Ok(Self::Rs512),
+            v => Err(format!("Cannot convert `{v}` to RsaSigningAlgorithm")),
+        }
+    }
+}
+
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    Serialize,
-    Deserialize,
-    Default,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
+    Debug, Copy, Clone, Serialize, Deserialize, Default, strum_macros::Display, PartialEq, Eq,
 )]
 #[strum(ascii_case_insensitive)]
 #[non_exhaustive]
@@ -83,18 +108,38 @@ impl From<EcCurve> for EcSigningAlgorithm {
     }
 }
 
+impl From<EcSigningAlgorithm> for &'static str {
+    fn from(value: EcSigningAlgorithm) -> Self {
+        match value {
+            EcSigningAlgorithm::Es256 => "ES256",
+            EcSigningAlgorithm::Es384 => "ES384",
+            EcSigningAlgorithm::Es512 => "ES512",
+        }
+    }
+}
+
+impl Jwa for EcSigningAlgorithm {
+    type Error = String;
+
+    fn to_jwa(&self) -> &'static str {
+        (*self).into()
+    }
+
+    fn from_jwa(value: &str) -> std::result::Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        match value {
+            "ES256" => Ok(Self::Es256),
+            "ES384" => Ok(Self::Es384),
+            "ES512" => Ok(Self::Es512),
+            v => Err(format!("Cannot convert `{v}` to EcSigningAlgorithm")),
+        }
+    }
+}
+
 #[derive(
-    Debug,
-    Copy,
-    Clone,
-    Serialize,
-    Deserialize,
-    Default,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
+    Debug, Copy, Clone, Serialize, Deserialize, Default, strum_macros::Display, PartialEq, Eq,
 )]
 #[strum(ascii_case_insensitive)]
 #[non_exhaustive]
@@ -113,21 +158,37 @@ impl From<OkpCurve> for OkpSigningAlgorithm {
     }
 }
 
+impl From<OkpSigningAlgorithm> for &'static str {
+    fn from(value: OkpSigningAlgorithm) -> Self {
+        match value {
+            OkpSigningAlgorithm::EdDSA => "EdDSA",
+        }
+    }
+}
+
+impl Jwa for OkpSigningAlgorithm {
+    type Error = String;
+
+    fn to_jwa(&self) -> &'static str {
+        (*self).into()
+    }
+
+    fn from_jwa(value: &str) -> std::result::Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        match value {
+            "EdDSA" => Ok(Self::EdDSA),
+            v => Err(format!("Cannot convert `{v}` to OkpSigningAlgorithm")),
+        }
+    }
+}
+
 /// JWS Signning alogrithm
 ///
 /// See [RFC 7515](https://datatracker.ietf.org/doc/html/rfc7515),
 /// [RFC 7518 §3.1](https://datatracker.ietf.org/doc/html/rfc7518#section-3.1)
-#[derive(
-    Debug,
-    Copy,
-    Clone,
-    Serialize,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
-)]
+#[derive(Debug, Copy, Clone, Serialize, strum_macros::Display, PartialEq, Eq)]
 #[strum(ascii_case_insensitive)]
 #[non_exhaustive]
 #[serde(untagged)]
@@ -154,82 +215,67 @@ impl From<OkpSigningAlgorithm> for SigningAlgorithm {
     }
 }
 
-// impl From<Rsa<Public>> for Jwk {
-//     fn from(value: Rsa<Public>) -> Self {
-//         let modulus = Box::from(b64::b64u_encode(value.n().to_vec()));
-//         let exponent = Box::from(b64::b64u_encode(value.e().to_vec()));
-//         let key_type = KeyType::Rsa;
+impl From<SigningAlgorithm> for &'static str {
+    fn from(value: SigningAlgorithm) -> Self {
+        match value {
+            SigningAlgorithm::Rsa(v) => v.into(),
+            SigningAlgorithm::Ec(v) => v.into(),
+            SigningAlgorithm::Okp(v) => v.into(),
+        }
+    }
+}
 
-//         let jwk = format!(r#"{{"e":"{exponent}","kty":"{key_type}","n":"{modulus}"}}"#);
+impl Jwa for SigningAlgorithm {
+    type Error = String;
 
-//         #[cfg(debug_assertions)]
-//         #[allow(clippy::expect_used)]
-//         {
-//             assert_eq!(
-//                 jwk,
-//                 serde_json::to_string(&serde_json::json!({
-//                     "e":exponent,
-//                     "kty":key_type,
-//                     "n":modulus
-//                 }))
-//                 .expect("should never fail")
-//             );
-//         }
+    fn to_jwa(&self) -> &'static str {
+        (*self).into()
+    }
 
-//         let hash = Sha256::digest(jwk).to_vec();
-//         let thumbprint = Box::from(b64::b64u_encode(hash));
-
-//         Self {
-//             exponent,
-//             key_type,
-//             modulus,
-//             thumbprint,
-//         }
-//     }
-// }
+    fn from_jwa(value: &str) -> std::result::Result<Self, Self::Error>
+    where
+        Self: std::marker::Sized,
+    {
+        RsaSigningAlgorithm::from_jwa(value)
+            .map(Self::Rsa)
+            .or_else(|_| EcSigningAlgorithm::from_jwa(value).map(Self::Ec))
+            .or_else(|_| OkpSigningAlgorithm::from_jwa(value).map(Self::Okp))
+            .map_err(|_| format!("{value} cannot be converted to SigningAlgorithm"))
+    }
+}
 
 /// TODO: Document
+///
+/// | EcCurve       | SigningAlgorithm      |
+/// | ------------- | --------------------- |
+/// | P-256         | ES256                 |
+/// | P-384         | ES384                 |
+/// | P-521         | ES512                 |
 #[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Serialize,
-    Deserialize,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
+    Debug, Default, Copy, Clone, Serialize, Deserialize, strum_macros::Display, PartialEq, Eq,
 )]
 #[non_exhaustive]
 pub enum EcCurve {
     #[serde(rename = "P-256")]
+    #[strum(serialize = "P-256")]
     #[default]
     P256,
     #[serde(rename = "P-384")]
+    #[strum(serialize = "P-384")]
     P384,
     #[serde(rename = "P-521")]
+    #[strum(serialize = "P-521")]
     P521,
 }
 
 /// TODO: Document
 #[derive(
-    Debug,
-    Default,
-    Copy,
-    Clone,
-    Serialize,
-    Deserialize,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
+    Debug, Default, Copy, Clone, Serialize, Deserialize, strum_macros::Display, PartialEq, Eq,
 )]
 #[non_exhaustive]
 pub enum OkpCurve {
     #[serde(rename = "Ed25519")]
+    #[strum(serialize = "Ed25519")]
     #[default]
     Ed25519,
 }
@@ -256,6 +302,7 @@ pub enum RsaKeyBits {
 }
 
 impl RsaKeyBits {
+    #[must_use]
     pub const fn as_usize(self) -> usize {
         match self {
             Self::Bits2048 => 2048,
@@ -263,10 +310,39 @@ impl RsaKeyBits {
         }
     }
 
+    #[must_use]
     pub const fn as_u32(self) -> u32 {
         match self {
             Self::Bits2048 => 2048,
             Self::Bits4096 => 4096,
+        }
+    }
+}
+
+impl TryFrom<usize> for RsaKeyBits {
+    type Error = Error;
+
+    fn try_from(value: usize) -> std::result::Result<Self, Self::Error> {
+        match value {
+            2048 => Ok(Self::Bits2048),
+            4096 => Ok(Self::Bits4096),
+            b => Err(Error::Unimplemented(
+                format!("Unknown number of rsa bits: {b}").into(),
+            )),
+        }
+    }
+}
+
+impl TryFrom<u32> for RsaKeyBits {
+    type Error = Error;
+
+    fn try_from(value: u32) -> std::result::Result<Self, Self::Error> {
+        match value {
+            2048 => Ok(Self::Bits2048),
+            4096 => Ok(Self::Bits4096),
+            b => Err(Error::Unimplemented(
+                format!("Unknown number of rsa bits: {b}").into(),
+            )),
         }
     }
 }
@@ -314,17 +390,7 @@ impl Key {
         key: Rsa<Private>,
         signing_algo: RsaSigningAlgorithm,
     ) -> Result<Self> {
-        let bits = key.n().num_bits();
-
-        let bits = match bits {
-            2048 => RsaKeyBits::Bits2048,
-            4096 => RsaKeyBits::Bits4096,
-            b => {
-                return Err(Error::Unimplemented(
-                    format!("Unknown number of rsa bits: {b}").into(),
-                ));
-            }
-        };
+        let bits = key.n().num_bits().cast_unsigned().try_into()?;
 
         Ok(Self::Rsa {
             bits,
@@ -405,6 +471,11 @@ impl Key {
         })
     }
 
+    /// TODO: Not tested yet
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     pub fn to_pem(&self) -> Result<Vec<u8>> {
         let pem = match self {
             Self::Rsa { key, .. } => key
@@ -421,6 +492,20 @@ impl Key {
         Ok(pem)
     }
 
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub fn pem_string(&self) -> Result<String> {
+        let pem = self
+            .to_pem()
+            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+
+        String::from_utf8(pem).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))
+    }
+
+    /// # Errors
+    ///
+    /// TODO: Write error docs
     #[cfg(debug_assertions)]
     pub fn to_pem_2(&self) -> Result<(String, String)> {
         let pkey = match self {
@@ -447,7 +532,12 @@ impl Key {
         Ok((private_key, public_key))
     }
 
-    fn save_key_to_pkcs8_der(&self) -> Result<Vec<u8>> {
+    /// TODO: test
+    ///
+    /// # Errors
+    ///
+    /// TODO: Write error docs
+    pub fn save_key_to_pkcs8_der(&self) -> Result<Vec<u8>> {
         let der = match self {
             Self::Rsa { key, .. } => key
                 .private_key_to_der()
@@ -464,17 +554,8 @@ impl Key {
     }
 }
 
-impl Serialize for Key {
-    fn serialize<S>(&self, _serializer: S) -> std::result::Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        todo!()
-    }
-}
-
 /// # Example
-///
+//
 /// ```json
 /// {
 ///   "kty": "RSA",
@@ -513,8 +594,12 @@ pub enum Jwk {
 impl Jwk {
     /// jwk -> to json -> sha256 hash -> base64url
     ///
+    /// - Builds the canonical JSON with only the required members, lexicographically sorted
+    /// - SHA-256 hashes it
+    /// - Base64url-encodes the digest (no padding)
+    ///
     /// See: [RFC 7638 §7.3](https://datatracker.ietf.org/doc/html/rfc7638), [RFC 8555 §8.1](https://datatracker.ietf.org/doc/html/rfc8555#section-8.1)
-    #[allow(clippy::unnecessary_literal_bound, clippy::unused_self)]
+    #[must_use]
     pub fn thumbprint(&self) -> Box<str> {
         use openssl::sha::sha256;
 
@@ -538,6 +623,14 @@ impl Jwk {
     }
 }
 
+impl TryFrom<Key> for Jwk {
+    type Error = Error;
+
+    fn try_from(value: Key) -> Result<Self> {
+        Self::try_from(&value)
+    }
+}
+
 impl TryFrom<&Key> for Jwk {
     type Error = Error;
 
@@ -549,27 +642,6 @@ impl TryFrom<&Key> for Jwk {
 
                 let modulus = Box::from(b64::b64u_encode(n.to_vec()));
                 let exponent = Box::from(b64::b64u_encode(e.to_vec()));
-
-                // // TODO:
-                // let jwk = format!(r#"{{"e":"{exponent}","kty":"RSA","n":"{modulus}"}}"#);
-
-                // #[cfg(debug_assertions)]
-                // #[allow(clippy::expect_used)]
-                // {
-                //     assert_eq!(
-                //         jwk,
-                //         serde_json::to_string(&serde_json::json!({
-                //             "e":exponent,
-                //             "kty":key_type,
-                //             "n":modulus
-                //         }))
-                //         .expect("should never fail")
-                //     );
-                // }
-
-                // TODO: should is use signing algorithm here?
-                // let hash = Sha256::digest(jwk).to_vec();
-                // let thumbprint = Box::from(b64::b64u_encode(hash));
 
                 Ok(Self::Rsa { exponent, modulus })
             }
@@ -588,8 +660,10 @@ impl TryFrom<&Key> for Jwk {
                     .affine_coordinates_gfp(group, &mut x, &mut y, &mut ctx)
                     .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
-                let x = Box::from(b64::b64u_encode(x.to_vec()));
-                let y = Box::from(b64::b64u_encode(y.to_vec()));
+                let coord_len = ec_coord_len(group);
+
+                let x = big_num_to_b64_padded(&x, coord_len);
+                let y = big_num_to_b64_padded(&y, coord_len);
 
                 Ok(Self::Ec { crv: *crv, x, y })
             }
@@ -649,6 +723,7 @@ pub struct JwsProtectedHeaders<'a> {
 }
 
 impl<'a> JwsProtectedHeaders<'a> {
+    #[must_use]
     pub fn new(key: &'a Key, url: &'a Url, auth: JwkOrKid<'a>, nonce: Option<&'a str>) -> Self {
         let signing_algorithm: SigningAlgorithm = match key {
             Key::Rsa { signing_algo, .. } => SigningAlgorithm::from(*signing_algo),
@@ -710,9 +785,15 @@ where
             serde_json::to_vec(&self.protected).map_err(serde::ser::Error::custom)?;
         let protected_b64 = b64::b64u_encode(protected_json);
 
-        // IMPORTANT: Serialize EmptyString as ""
+        // serialize payload
         let payload_json = serde_json::to_vec(&self.payload).map_err(serde::ser::Error::custom)?;
-        let payload_b64 = b64::b64u_encode(payload_json);
+
+        // IMPORTANT: Serialize EmptyString as ""
+        let payload_b64 = if payload_json == [b'"', b'"'] {
+            String::new()
+        } else {
+            b64::b64u_encode(payload_json)
+        };
 
         // signing input
         let signing_input = format!("{protected_b64}.{payload_b64}");
@@ -860,9 +941,6 @@ mod tests {
     use super::*;
 
     use std::sync::OnceLock;
-
-    pub type Result<T> = std::result::Result<T, Error>;
-    pub type Error = Box<dyn std::error::Error>; // For tests.
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
     #[serde(tag = "type")]

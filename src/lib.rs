@@ -17,7 +17,6 @@ mod b64;
 mod client;
 mod csr;
 mod error;
-mod new_auth;
 mod time;
 
 pub mod account;
@@ -27,7 +26,7 @@ pub mod directory;
 pub mod order;
 
 pub use api::{AcmeError, AcmeErrorType, Error as ApiError};
-pub use authentication::PrivateKey;
+pub use authentication::*;
 pub use client::Client;
 pub use directory::{LetsEncrypt, ZeroSsl};
 pub use error::{Error, Result};

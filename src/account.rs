@@ -7,13 +7,13 @@
 use std::sync::Arc;
 
 use http::StatusCode;
-use serde::{Deserialize, Serialize, Serializer, de, ser::SerializeStruct as _};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeStruct as _};
 use url::Url;
 
 use crate::{
     Client, Error, Result,
     api::extract_location_header,
-    authentication::{Jwk, JwkOrKid, Jws, Kid, PrivateKey, rsa_private_to_rsa_public},
+    authentication::{Jwk, JwkOrKid, Jws, JwsProtectedHeaders, Key, Kid},
 };
 
 /// New Account
@@ -149,12 +149,14 @@ pub struct AccountObject {
 #[must_use]
 #[derive(Debug, Clone)]
 pub struct AccountCredentials {
+    pub(crate) directory_url: Url,
+
     pub(crate) kid: Kid,
 
     /// The account's private key
-    pub(crate) private_key: PrivateKey,
-    pub(crate) directory_url: Url,
+    pub(crate) key: Key,
 
+    /// Account jwk. Not Serialized
     pub(crate) jwk: Jwk,
 }
 
@@ -165,44 +167,39 @@ impl Serialize for AccountCredentials {
     {
         let mut state = serializer.serialize_struct("AccountCredentials", 4)?;
 
-        state.serialize_field("kid", &self.kid)?;
-        state.serialize_field("private_key", &self.private_key)?;
         state.serialize_field("directory_url", &self.directory_url)?;
-        state.serialize_field("jwk", &self.jwk)?;
+        state.serialize_field("kid", &self.kid)?;
+        state.serialize_field("key", &self.key)?;
 
         state.end()
     }
 }
 
-impl<'de> serde::de::Deserialize<'de> for AccountCredentials {
-    fn deserialize<D>(
-        deserializer: D,
-    ) -> std::result::Result<Self, <D as serde::Deserializer<'de>>::Error>
+impl<'de> Deserialize<'de> for AccountCredentials {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, <D as Deserializer<'de>>::Error>
     where
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
         struct Helper {
             kid: Kid,
-            private_key: PrivateKey, // base64-encoded DER
+            key: Key,
             directory_url: Url,
         }
 
         let Helper {
             kid,
-            private_key,
+            key,
             directory_url,
         } = Helper::deserialize(deserializer)?;
 
-        let public_key =
-            rsa_private_to_rsa_public(private_key.rsa_key()).map_err(de::Error::custom)?;
-
-        let jwk = public_key.into();
+        // todo: document
+        let jwk = Jwk::try_from(&key).map_err(serde::de::Error::custom)?;
 
         Ok(Self {
-            kid,
-            private_key,
             directory_url,
+            kid,
+            key,
             jwk,
         })
     }
@@ -212,15 +209,14 @@ impl AccountCredentials {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub fn load_from_parts(directory_url: Url, kid: Kid, private_key: PrivateKey) -> Result<Self> {
-        let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
-        let jwk = public_key.into();
+    pub fn load_from_parts(directory_url: Url, kid: Kid, key: Key) -> Result<Self> {
+        let jwk =
+            Jwk::try_from(&key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         Ok(Self {
-            kid,
-            private_key,
             directory_url,
+            kid,
+            key,
             jwk,
         })
     }
@@ -265,17 +261,13 @@ impl Account {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn create(
-        client: Arc<Client>,
-        private_key: PrivateKey,
-        new_account: NewAccount,
-    ) -> Result<Self> {
+    pub async fn create(client: Arc<Client>, key: Key, new_account: NewAccount) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(false),
             ..new_account
         };
 
-        Self::fetch_or_create(client, &private_key, new_account).await
+        Self::fetch_or_create(client, &key, new_account).await
     }
 
     /// Fetch account by sending a POST request to the server's newAccount URL.
@@ -288,13 +280,13 @@ impl Account {
     /// Will fail if account does not exist `AcmeErrorType::AccountDoesNotExist`.
     ///
     /// TODO: Write error docs
-    pub async fn fetch(client: Arc<Client>, private_key: &PrivateKey) -> Result<Self> {
+    pub async fn fetch(client: Arc<Client>, key: &Key) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(true),
             ..Default::default()
         };
 
-        Self::fetch_or_create(client, private_key, new_account).await
+        Self::fetch_or_create(client, key, new_account).await
     }
 
     /// Create new account by sending a POST request to the server's newAccount URL
@@ -305,18 +297,17 @@ impl Account {
     /// TODO: Write error docs
     pub async fn fetch_or_create(
         client: Arc<Client>,
-        private_key: &PrivateKey,
+        key: &Key,
         new_account: NewAccount,
     ) -> Result<Self> {
         let url = &client.directory.new_account;
 
-        let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let jwk = Jwk::try_from(key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
-        let auth = JwkOrKid::Jwk(Jwk::from(public_key.clone()));
+        let auth = JwkOrKid::Jwk(jwk.clone());
         let body = new_account;
 
-        let response = client.post(url, private_key, auth, body).await?;
+        let response = client.post(url, key, auth, body).await?;
 
         // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
         let kid: Kid = extract_location_header(response.headers()).map(Into::into)?;
@@ -331,13 +322,12 @@ impl Account {
         }
 
         let directory_url = client.directory_url.clone();
-        let jwk = public_key.into();
 
         Ok(Self {
             client,
             credentials: AccountCredentials {
                 kid,
-                private_key: private_key.clone(),
+                key: key.clone(),
                 directory_url,
                 jwk,
             },
@@ -347,10 +337,7 @@ impl Account {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn get_account_object(
-        client: &Client,
-        private_key: &PrivateKey,
-    ) -> Result<AccountObject> {
+    pub async fn get_account_object(client: &Client, key: &Key) -> Result<AccountObject> {
         let new_account = NewAccount {
             only_return_existing: Some(true),
             ..Default::default()
@@ -358,13 +345,11 @@ impl Account {
 
         let url = &client.directory.new_account;
 
-        let public_key = rsa_private_to_rsa_public(private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
-
-        let auth = JwkOrKid::Jwk(Jwk::from(public_key.clone()));
+        let jwk = Jwk::try_from(key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let auth = JwkOrKid::Jwk(jwk);
         let body = new_account;
 
-        let response = client.post(url, private_key, auth, body).await?;
+        let response = client.post(url, key, auth, body).await?;
 
         let account_object = response
             .json::<AccountObject>()
@@ -394,16 +379,13 @@ impl Account {
 
         let url = &self.credentials.kid;
 
-        let public_key = rsa_private_to_rsa_public(self.credentials.private_key.rsa_key())
+        let jwk = Jwk::try_from(&self.credentials.key)
             .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         let auth = JwkOrKid::Kid(&self.credentials.kid);
         let body = update_account;
 
-        let response = self
-            .client
-            .post(url, &self.credentials.private_key, auth, body)
-            .await?;
+        let response = self.client.post(url, &self.credentials.key, auth, body).await?;
 
         let intermediate_account = response
             .json::<IntermidiateAccount>()
@@ -414,13 +396,11 @@ impl Account {
             return Err(Error::AccountStatusNoValid(intermediate_account.status));
         }
 
-        let jwk = public_key.into();
-
         Ok(Self {
             client: Arc::clone(&self.client),
             credentials: AccountCredentials {
                 kid: self.credentials.kid.clone(),
-                private_key: self.credentials.private_key.clone(),
+                key: self.credentials.key.clone(),
                 directory_url: self.credentials.directory_url.clone(),
                 jwk,
             },
@@ -444,9 +424,9 @@ impl Account {
     /// # Panics
     ///
     /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
-    pub async fn key_rollover(self, new_private_key: PrivateKey) -> Result<Self> {
+    pub async fn key_rollover(self, new_key: Key) -> Result<Self> {
         let mut account = self;
-        account.key_rollover_mut(new_private_key).await?;
+        account.key_rollover_mut(new_key).await?;
         Ok(account)
     }
 
@@ -466,37 +446,62 @@ impl Account {
     /// # Panics
     ///
     /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
-    pub async fn key_rollover_mut(&mut self, new_private_key: PrivateKey) -> Result<()> {
+    pub async fn key_rollover_mut(&mut self, new_key: Key) -> Result<()> {
+        #![allow(clippy::similar_names)]
+
         #[derive(Debug, Clone, Serialize)]
         #[serde(rename_all = "camelCase")]
         struct InnerPayload<'a> {
             account: &'a Kid,
-            old_key: Jwk,
+            #[serde(rename = "oldKey")]
+            old_jwk: Jwk,
         }
 
         let url = &self.client.directory.key_change;
 
-        let old_private_key = &self.credentials.private_key;
-        let old_public_key = rsa_private_to_rsa_public(old_private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
-        let old_key_jwk = Jwk::from(old_public_key);
-        let old_auth = JwkOrKid::Kid(&self.credentials.kid);
+        // {
+        //  "protected": base64url({
+        //    "alg": "ES256",
+        //    "kid": "https://example.com/acme/acct/evOfKhNU60wg",
+        //    "nonce": "S9XaOcxP5McpnTcWPIhYuB",
+        //    "url": "https://example.com/acme/key-change"
+        //  }),
+        //  "payload": base64url({
+        //    "protected": base64url({
+        //      "alg": "ES256",
+        //      "jwk": /* new key */,
+        //      "url": "https://example.com/acme/key-change"
+        //    }),
+        //    "payload": base64url({
+        //      "account": "https://example.com/acme/acct/evOfKhNU60wg",
+        //      "oldKey": /* old key */
+        //    }),
+        //    "signature": "Xe8B94RD30Azj2ea...8BmZIRtcSKPSd8gU"
+        //  }),
+        //  "signature": "5TWiqIYQfIDfALQv...x9C2mg8JGPxl5bI4"
+        // }
 
-        let inner_public_key = rsa_private_to_rsa_public(new_private_key.rsa_key())
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
-        let inner_auth = JwkOrKid::Jwk(Jwk::from(inner_public_key));
+        let old_key = &self.credentials.key;
+        let old_jwk =
+            Jwk::try_from(old_key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
-        let inner_body = InnerPayload {
+        let inner_payload = InnerPayload {
             account: &self.credentials.kid,
-            old_key: old_key_jwk,
+            old_jwk,
         };
 
-        let payload = Jws::new_from_parts(&new_private_key, url, inner_auth, None, inner_body);
-        let body = payload;
+        let inner_jwk =
+            Jwk::try_from(&new_key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let inner_auth = JwkOrKid::Jwk(inner_jwk);
 
-        let new_account_maybe = match self.client.post(url, old_private_key, old_auth, body).await {
+        let inner_jws_header = JwsProtectedHeaders::new(&new_key, url, inner_auth, None);
+        let inner_jws = Jws::new(&new_key, inner_jws_header, inner_payload);
+
+        let outer_auth = JwkOrKid::Kid(&self.credentials.kid);
+
+        let new_account_maybe = match self.client.post(url, old_key, outer_auth, inner_jws).await {
             Ok(v) => match v.status() {
-                StatusCode::OK => Self::fetch(self.client.clone(), &new_private_key).await,
+                StatusCode::OK => Self::fetch(self.client.clone(), &new_key).await,
                 StatusCode::CONFLICT => Err(Error::ExistingAccountDuringKeyRollover),
                 status_code => Err(Error::Unimplemented(Box::from(format!(
                     "Invalid status code recieved when key rollover: {status_code}",
@@ -537,9 +542,7 @@ impl Account {
            "status": "deactivated"
         });
 
-        self.client
-            .post(url, &self.credentials.private_key, auth, body)
-            .await?;
+        self.client.post(url, &self.credentials.key, auth, body).await?;
 
         Ok(())
     }

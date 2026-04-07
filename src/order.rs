@@ -209,7 +209,7 @@ impl Order {
 
         let response = account
             .client
-            .post(url, &account.credentials.private_key, auth, body)
+            .post(url, &account.credentials.key, auth, body)
             .await?;
 
         // TODO: If the server is willing to issue the requested certificate,
@@ -232,7 +232,7 @@ impl Order {
 
         let response = account
             .client
-            .post(url, &account.credentials.private_key, auth, body)
+            .post(url, &account.credentials.key, auth, body)
             .await?;
 
         let order = response.json::<Self>().await?;
@@ -297,7 +297,7 @@ impl Order {
 
         account
             .client
-            .post(url, &account.credentials.private_key, auth, body)
+            .post(url, &account.credentials.key, auth, body)
             .await?;
 
         Ok(csr)
@@ -321,7 +321,7 @@ impl Order {
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
         let response = account
             .client
-            .post(url, &account.credentials.private_key, auth, body)
+            .post(url, &account.credentials.key, auth, body)
             .await?;
         // response "content-type": "application/pem-certificate-chain; charset=utf-8",
 

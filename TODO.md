@@ -3,11 +3,11 @@
 - Impl Copy for enums where possible
 
 - ```rs
-      serde_json::to_string(&serde_json::json!({
-          "e":exponent,
-          "kty":key_type,
-          "n":modulus
-      }))
+  serde_json::to_string(&serde_json::json!({
+      "e":exponent,
+      "kty":key_type,
+      "n":modulus
+  }))
   ```
 
   Should order be preserved?

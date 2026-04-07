@@ -1,25 +1,25 @@
 type = "EC"
 curve = "P-256"
 signingAlgo = "ES256"
-x = "CLdXA8_Hoom7BJA9Owzpb6-XLCfdX9SsMpUUK7jygps"
-y = "bsvlcJ1fE1SSqGOb3TxVdE6tkLcH96sD03O7PyXYt8s"
+x = "XdOoanpSJRY9cf98QTO43ONVu0nz8vG1yx6BhDMeHCE"
+y = "6QwuP4ZNX-P-spbN6SmJzsGP-jM8DUnmgtPd5Jixf_E"
 privateKeyPem = """
 -----BEGIN PRIVATE KEY-----
-MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg9XnDlnlm7tML5cMn
-TspZKkUIcAERnDGT2aOE3Ahg1cOhRANCAAQIt1cDz8eiibsEkD07DOlvr5csJ91f
-1KwylRQruPKCm27L5XCdXxNUkqhjm908VXROrZC3B/erA9Nzuz8l2LfL
+MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgTlOSPGP3T5us6SH0
+A9vAcE91u/olv8iwNx1DefdIqruhRANCAARd06hqelIlFj1x/3xBM7jc41W7SfPy
+8bXLHoGEMx4cIekMLj+GTV/j/rKWzekpic7Bj/ozPA1J5oLT3eSYsX/x
 -----END PRIVATE KEY-----
 """
 publicKeyPem = """
 -----BEGIN PUBLIC KEY-----
-MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAECLdXA8/Hoom7BJA9Owzpb6+XLCfd
-X9SsMpUUK7jygptuy+VwnV8TVJKoY5vdPFV0Tq2Qtwf3qwPTc7s/Jdi3yw==
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEXdOoanpSJRY9cf98QTO43ONVu0nz
+8vG1yx6BhDMeHCHpDC4/hk1f4/6yls3pKYnOwY/6MzwNSeaC093kmLF/8Q==
 -----END PUBLIC KEY-----
 """
-jwk = '{"kty":"EC","crv":"P-256","x":"CLdXA8_Hoom7BJA9Owzpb6-XLCfdX9SsMpUUK7jygps","y":"bsvlcJ1fE1SSqGOb3TxVdE6tkLcH96sD03O7PyXYt8s"}'
-jwkThumbprint = "pZ34uFMcZ2V_DoyHdc-RXru1X1pr0JbGIxKn2kFz5wI"
+jwk = '{"kty":"EC","crv":"P-256","x":"XdOoanpSJRY9cf98QTO43ONVu0nz8vG1yx6BhDMeHCE","y":"6QwuP4ZNX-P-spbN6SmJzsGP-jM8DUnmgtPd5Jixf_E"}'
+jwkThumbprint = "lFgLGJDyf_HhDtRmO_OAdQSo3YHBbOTFx2sUqAjfq5o"
 url = "https://example.com/"
 nonce = "test-nonce"
 body = "test-body"
-jwsProtectedHeader = '{"nonce":"test-nonce","url":"https://example.com/","alg":"ES256","jwk":{"kty":"EC","crv":"P-256","x":"CLdXA8_Hoom7BJA9Owzpb6-XLCfdX9SsMpUUK7jygps","y":"bsvlcJ1fE1SSqGOb3TxVdE6tkLcH96sD03O7PyXYt8s"}}'
-jws = '{"protected":"eyJub25jZSI6InRlc3Qtbm9uY2UiLCJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tLyIsImFsZyI6IkVTMjU2IiwiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiQ0xkWEE4X0hvb203QkpBOU93enBiNi1YTENmZFg5U3NNcFVVSzdqeWdwcyIsInkiOiJic3ZsY0oxZkUxU1NxR09iM1R4VmRFNnRrTGNIOTZzRDAzTzdQeVhZdDhzIn19","payload":"InRlc3QtYm9keSI","signature":"xwuUd_18iZNKiAjLUgvpAXbtjpuHqi42wIu2RoqlnZ42AhQy7TKc7BsI2n0BQolEzuoglt2JTc_9noT936XiFQ"}'
+jwsProtectedHeader = '{"nonce":"test-nonce","url":"https://example.com/","alg":"ES256","jwk":{"kty":"EC","crv":"P-256","x":"XdOoanpSJRY9cf98QTO43ONVu0nz8vG1yx6BhDMeHCE","y":"6QwuP4ZNX-P-spbN6SmJzsGP-jM8DUnmgtPd5Jixf_E"}}'
+jws = '{"protected":"eyJub25jZSI6InRlc3Qtbm9uY2UiLCJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tLyIsImFsZyI6IkVTMjU2IiwiandrIjp7Imt0eSI6IkVDIiwiY3J2IjoiUC0yNTYiLCJ4IjoiWGRPb2FucFNKUlk5Y2Y5OFFUTzQzT05WdTBuejh2RzF5eDZCaERNZUhDRSIsInkiOiI2UXd1UDRaTlgtUC1zcGJONlNtSnpzR1Atak04RFVubWd0UGQ1Sml4Zl9FIn19","payload":"InRlc3QtYm9keSI","signature":"fy0eQ0ycFRmNkpqM9REJCUFl2WnvXSm-4TT6eMX5ZrWqarsJ6Ti8hItyikDSc4YTkoMFqgzYdE6G5hVYZD4DbA"}'

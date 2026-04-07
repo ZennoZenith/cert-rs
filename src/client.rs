@@ -7,7 +7,7 @@ use url::Url;
 
 use crate::{
     AcmeError, AcmeErrorType, Result,
-    authentication::{JwkOrKid, Jws, PrivateKey},
+    authentication::{JwkOrKid, Jws, JwsProtectedHeaders, Key},
     directory::Directory,
 };
 
@@ -99,7 +99,7 @@ impl Client {
     pub(crate) async fn post<T: Clone + fmt::Debug + Serialize>(
         &self,
         url: &Url,
-        private_key: &PrivateKey,
+        key: &Key,
         auth: JwkOrKid<'_>,
         body: T,
     ) -> ApiResult<Response> {
@@ -107,13 +107,8 @@ impl Client {
             let nonce = self.nonce().await?;
 
             // TODO: try to optimize auth and body clones
-            let jws = Jws::new_from_parts(
-                private_key,
-                url,
-                auth.clone(),
-                Some(nonce.as_ref()),
-                body.clone(),
-            );
+            let jws_header = JwsProtectedHeaders::new(key, url, auth.clone(), Some(nonce.as_ref()));
+            let jws = Jws::new(key, jws_header, body.clone());
 
             let maybe_response = self
                 .client
