@@ -251,7 +251,8 @@ pub trait RequestBuilderExt {
 
 impl RequestBuilderExt for RequestBuilder {
     fn add_rfc_headers(self) -> Self {
-        // TODO: add rfc section here
+        // TODO: add rfc
+        // [RFC 8555 §6.2](https://datatracker.ietf.org/doc/html/rfc8555#section-6.2)
         self.header(USER_AGENT, HeaderValue::from_static("cert-rs 0.1"))
             .header(
                 CONTENT_TYPE,
@@ -318,40 +319,27 @@ impl ResponseExt for Response {
     }
 }
 
-#[derive(Debug, Clone)]
-pub enum AcmeApiBody<T = ()>
-where
-    T: Serialize,
-{
-    EmptyString,
-    EmptyObject,
-    Other(T),
-}
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub struct EmptyString;
 
-impl AcmeApiBody<()> {
-    pub const EMPTY_STRING: Self = Self::EmptyString;
-    pub const EMPTY_OBJECT: Self = Self::EmptyObject;
-}
+#[derive(Debug, Copy, Clone, Default, PartialEq, Eq)]
+pub struct EmptyObject;
 
-impl<T> Serialize for AcmeApiBody<T>
-where
-    T: Serialize,
-{
+impl Serialize for EmptyString {
     fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        // EmptyString   ->  ""
-        // EmptyObject   ->  {}
-        // Other(T)      ->  serialization of T
-        match self {
-            Self::EmptyString => serializer.serialize_str(""),
-            Self::EmptyObject => {
-                let map = serializer.serialize_map(Some(0))?;
-                map.end()
-            }
-            Self::Other(v) => v.serialize(serializer),
-        }
+        serializer.serialize_str("")
+    }
+}
+
+impl Serialize for EmptyObject {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_map(Some(0))?.end()
     }
 }
 
@@ -369,7 +357,7 @@ mod tests {
 
     #[test]
     fn serialize_empty_string() {
-        let body: AcmeApiBody = AcmeApiBody::EmptyString;
+        let body = EmptyString;
 
         let json =
             serde_json::to_string(&body).expect("failed to convert acme api body to json string");
@@ -379,7 +367,7 @@ mod tests {
 
     #[test]
     fn serialize_empty_object() {
-        let body: AcmeApiBody = AcmeApiBody::EmptyObject;
+        let body = EmptyObject;
 
         let json =
             serde_json::to_string(&body).expect("failed to convert acme api body to json string");
@@ -395,7 +383,7 @@ mod tests {
             b: &'static str,
         }
 
-        let body = AcmeApiBody::Other(Payload { a: 1, b: "test" });
+        let body = Payload { a: 1, b: "test" };
 
         let json =
             serde_json::to_string(&body).expect("failed to convert acme api body to json string");
@@ -405,7 +393,7 @@ mod tests {
 
     #[test]
     fn serialize_other_primitive() {
-        let body = AcmeApiBody::Other(42u32);
+        let body = 42u32;
 
         let json =
             serde_json::to_string(&body).expect("failed to convert acme api body to json string");
@@ -415,7 +403,7 @@ mod tests {
 
     #[test]
     fn serialize_other_array() {
-        let body = AcmeApiBody::Other(vec![1, 2, 3]);
+        let body = vec![1, 2, 3];
 
         let json =
             serde_json::to_string(&body).expect("failed to convert acme api body to json string");

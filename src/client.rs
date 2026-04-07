@@ -12,7 +12,7 @@ use crate::{
 };
 
 use crate::api::{
-    AcmeApiBody, Error as ApiError, RequestBuilderExt as _, ResponseExt as _, Result as ApiResult,
+    Error as ApiError, RequestBuilderExt as _, ResponseExt as _, Result as ApiResult,
 };
 
 const MAX_NONCE_STORE_CAPACITY: usize = 100;
@@ -101,7 +101,7 @@ impl Client {
         url: &Url,
         private_key: &PrivateKey,
         auth: JwkOrKid<'_>,
-        body: AcmeApiBody<T>,
+        body: T,
     ) -> ApiResult<Response> {
         for i in 0..MAX_NONCE_RETRIES {
             let nonce = self.nonce().await?;

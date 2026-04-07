@@ -9,7 +9,11 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid, time::TimeRfc3339,
+    Result,
+    account::Account,
+    api::{EmptyObject, EmptyString},
+    authentication::JwkOrKid,
+    time::TimeRfc3339,
 };
 
 /// Challenge Status
@@ -203,7 +207,7 @@ impl KnownChallenge {
         let url = &url;
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = AcmeApiBody::EMPTY_OBJECT;
+        let body = EmptyObject;
         let response = account
             .client
             .post(url, &account.credentials.private_key, auth, body)
@@ -236,7 +240,7 @@ impl KnownChallenge {
         let url = &url;
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = AcmeApiBody::EMPTY_STRING;
+        let body = EmptyString;
         let response = account
             .client
             .post(url, &account.credentials.private_key, auth, body)

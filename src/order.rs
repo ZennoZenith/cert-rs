@@ -3,7 +3,7 @@
 use crate::{
     AcmeError, Error, Result,
     account::Account,
-    api::{AcmeApiBody, extract_location_header},
+    api::{EmptyString, extract_location_header},
     authentication::JwkOrKid,
     b64, csr,
     time::TimeRfc3339,
@@ -205,7 +205,7 @@ impl Order {
         let url = &account.client.directory().new_order;
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = AcmeApiBody::Other(new_order);
+        let body = new_order;
 
         let response = account
             .client
@@ -228,7 +228,7 @@ impl Order {
         let url = order_url;
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = AcmeApiBody::EMPTY_STRING;
+        let body = EmptyString;
 
         let response = account
             .client
@@ -291,9 +291,9 @@ impl Order {
         let url = &self.finalize;
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = AcmeApiBody::Other(serde_json::json!({
+        let body = serde_json::json!({
             "csr": csr_der_encoded
-        }));
+        });
 
         account
             .client
@@ -316,7 +316,7 @@ impl Order {
         };
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = AcmeApiBody::EMPTY_STRING;
+        let body = EmptyString;
 
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
         let response = account

@@ -12,7 +12,7 @@ use url::Url;
 
 use crate::{
     Client, Error, Result,
-    api::{AcmeApiBody, extract_location_header},
+    api::extract_location_header,
     authentication::{Jwk, JwkOrKid, Jws, Kid, PrivateKey, rsa_private_to_rsa_public},
 };
 
@@ -314,7 +314,7 @@ impl Account {
             .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         let auth = JwkOrKid::Jwk(Jwk::from(public_key.clone()));
-        let body = AcmeApiBody::Other(new_account);
+        let body = new_account;
 
         let response = client.post(url, private_key, auth, body).await?;
 
@@ -362,7 +362,7 @@ impl Account {
             .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         let auth = JwkOrKid::Jwk(Jwk::from(public_key.clone()));
-        let body = AcmeApiBody::Other(new_account);
+        let body = new_account;
 
         let response = client.post(url, private_key, auth, body).await?;
 
@@ -398,7 +398,7 @@ impl Account {
             .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
 
         let auth = JwkOrKid::Kid(&self.credentials.kid);
-        let body = AcmeApiBody::Other(update_account);
+        let body = update_account;
 
         let response = self
             .client
@@ -486,13 +486,13 @@ impl Account {
             .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
         let inner_auth = JwkOrKid::Jwk(Jwk::from(inner_public_key));
 
-        let inner_body = AcmeApiBody::Other(InnerPayload {
+        let inner_body = InnerPayload {
             account: &self.credentials.kid,
             old_key: old_key_jwk,
-        });
+        };
 
         let payload = Jws::new_from_parts(&new_private_key, url, inner_auth, None, inner_body);
-        let body = AcmeApiBody::Other(payload);
+        let body = payload;
 
         let new_account_maybe = match self.client.post(url, old_private_key, old_auth, body).await {
             Ok(v) => match v.status() {
@@ -533,9 +533,9 @@ impl Account {
         let url = &self.credentials.kid.as_url();
 
         let auth = JwkOrKid::Kid(&self.credentials.kid);
-        let body = AcmeApiBody::Other(serde_json::json!({
+        let body = serde_json::json!({
            "status": "deactivated"
-        }));
+        });
 
         self.client
             .post(url, &self.credentials.private_key, auth, body)

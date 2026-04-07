@@ -9,7 +9,7 @@ use sha2::{Digest as _, Sha256};
 use std::{fmt, str::FromStr};
 use url::Url;
 
-use crate::{Error, Result, api::AcmeApiBody, b64};
+use crate::{Error, Result, b64};
 
 pub fn rsa_private_to_rsa_public(
     private_key: &Rsa<Private>,
@@ -28,7 +28,7 @@ pub struct Jws<'a, T: Serialize> {
     private_key: &'a PrivateKey,
 
     protected: JwsProtectedHeaders<'a>,
-    payload: AcmeApiBody<T>,
+    payload: T,
 }
 
 impl<T> Serialize for Jws<'_, T>
@@ -44,13 +44,13 @@ where
             serde_json::to_vec(&self.protected).map_err(serde::ser::Error::custom)?;
         let protected_b64 = b64::b64u_encode(protected_json);
 
-        // IMPORTANT: Serialize EmptyString as ""
         // serialize payload
-        let payload_b64 = if matches!(self.payload, AcmeApiBody::EmptyString) {
+        let payload_json = serde_json::to_vec(&self.payload).map_err(serde::ser::Error::custom)?;
+
+        // IMPORTANT: Serialize EmptyString as ""
+        let payload_b64 = if payload_json == [b'"', b'"'] {
             String::new()
         } else {
-            let payload_json =
-                serde_json::to_vec(&self.payload).map_err(serde::ser::Error::custom)?;
             b64::b64u_encode(payload_json)
         };
 
@@ -89,7 +89,7 @@ where
     pub const fn new(
         private_key: &'a PrivateKey,
         jws_protected_headers: JwsProtectedHeaders<'a>,
-        body: AcmeApiBody<T>,
+        body: T,
     ) -> Self {
         Self {
             private_key,
@@ -103,7 +103,7 @@ where
         url: &'a Url,
         auth: JwkOrKid<'a>,
         nonce: Option<&'a str>,
-        body: AcmeApiBody<T>,
+        body: T,
     ) -> Self {
         let jws_protected_headers = JwsProtectedHeaders {
             algorithm: JwsAlgorithm::RS256,
@@ -430,6 +430,8 @@ mod tests {
 
     use openssl::pkey::{PKey, Public};
 
+    use crate::api::EmptyString;
+
     use super::*;
 
     const FIXTURE_PRIVATE_KEY: &str = include_str!("../tests/FIXTURE_PRIVATE_KEY.pem");
@@ -501,7 +503,7 @@ mod tests {
             nonce: Some("some-nonce"),
         };
 
-        let body = AcmeApiBody::EMPTY_STRING;
+        let body = EmptyString;
 
         let json = serde_json::to_string(&Jws::new(&private_key, jws_protected_headers, body))
             .expect("Cannot convert jws to json string");

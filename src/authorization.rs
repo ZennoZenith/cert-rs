@@ -1,6 +1,6 @@
 //! Authorization Management
 
-use crate::{Result, account::Account, api::AcmeApiBody, authentication::JwkOrKid, b64};
+use crate::{Result, account::Account, api::EmptyString, authentication::JwkOrKid, b64};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use url::Url;
@@ -117,7 +117,7 @@ impl Authorization {
     /// [RFC 8555 §7.5.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.1
     pub async fn get(account: &Account, url: &Url) -> Result<Self> {
         let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = AcmeApiBody::EMPTY_STRING;
+        let body = EmptyString;
 
         let response = account
             .client
@@ -141,9 +141,9 @@ impl Authorization {
     /// [RFC 8555 §7.5.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.2
     pub async fn deactivate(account: &Account, url: &Url) -> Result<Self> {
         let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = AcmeApiBody::Other(serde_json::json!({
+        let body = serde_json::json!({
            "status": "deactivated"
-        }));
+        });
 
         let response = account
             .client
