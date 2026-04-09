@@ -36,7 +36,7 @@ pub enum Error {
     ///
     /// See [RFC 8555 §6.7](https://datatracker.ietf.org/doc/html/rfc8555#section-6.7).
     #[error("{0}")]
-    AcmeError(AcmeError),
+    AcmeError(Problem),
 
     /// The response body could not be parsed as JSON.
     #[error("{0}")]
@@ -83,14 +83,14 @@ pub enum Error {
 /// }
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
-pub struct AcmeError {
+pub struct Problem {
     #[serde(rename = "type")]
-    pub type_: AcmeErrorType,
+    pub type_: ProblemType,
     pub detail: Box<str>,
     pub status: u16,
 }
 
-impl fmt::Display for AcmeError {
+impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {} (HTTP {})", self.type_, self.detail, self.status)
     }
@@ -104,7 +104,7 @@ impl fmt::Display for AcmeError {
 /// This list is not exhaustive
 ///
 /// [RFC 8555 §6.7]: https://datatracker.ietf.org/doc/html/rfc8555#section-6.7
-pub enum AcmeErrorType {
+pub enum ProblemType {
     /// The request specified an account that does not exist
     AccountDoesNotExist,
 
@@ -184,7 +184,7 @@ pub enum AcmeErrorType {
     Unknown(Box<str>),
 }
 
-impl<'de> Deserialize<'de> for AcmeErrorType {
+impl<'de> Deserialize<'de> for ProblemType {
     fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
     where
         D: Deserializer<'de>,
@@ -238,9 +238,9 @@ pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
         .map_err(|_| Error::LocationHeaderNotUrl)
 }
 
-async fn parse_acme_error(response: Response) -> Result<AcmeError> {
+async fn parse_acme_error(response: Response) -> Result<Problem> {
     response
-        .json::<AcmeError>()
+        .json::<Problem>()
         .await
         .map_err(|e| Error::AcmeErrorParse(Box::from(e.to_string())))
 }
@@ -351,7 +351,7 @@ mod tests {
     use super::*;
     use serde::Serialize;
 
-    fn parse(json: &str) -> AcmeError {
+    fn parse(json: &str) -> Problem {
         serde_json::from_str(json).expect("failed to parse acme error")
     }
 
@@ -424,7 +424,7 @@ mod tests {
         let err = parse(json);
 
         match err.type_ {
-            AcmeErrorType::Malformed => (),
+            ProblemType::Malformed => (),
             _ => panic!("expected malformed error"),
         }
 
@@ -445,7 +445,7 @@ mod tests {
         let err = parse(json);
 
         match err.type_ {
-            AcmeErrorType::Unknown(code) => {
+            ProblemType::Unknown(code) => {
                 assert_eq!(code, "someNewError".into());
             }
             _ => panic!("expected unknown error"),
@@ -467,7 +467,7 @@ mod tests {
         let err = parse(json);
 
         match err.type_ {
-            AcmeErrorType::Malformed => (),
+            ProblemType::Malformed => (),
             _ => panic!("expected malformed"),
         }
     }

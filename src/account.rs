@@ -260,7 +260,11 @@ impl Account {
     /// # Errors
     ///
     /// TODO: Write error docs
-    pub async fn create(client: Arc<Client>, key: Key, new_account: NewAccount) -> Result<Self> {
+    pub async fn create(
+        client: impl Into<Arc<Client>>,
+        key: Key,
+        new_account: NewAccount,
+    ) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(false),
             ..new_account
@@ -279,7 +283,7 @@ impl Account {
     /// Will fail if account does not exist `AcmeErrorType::AccountDoesNotExist`.
     ///
     /// TODO: Write error docs
-    pub async fn fetch(client: Arc<Client>, key: &Key) -> Result<Self> {
+    pub async fn fetch(client: impl Into<Arc<Client>>, key: &Key) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(true),
             ..Default::default()
@@ -295,10 +299,11 @@ impl Account {
     ///
     /// TODO: Write error docs
     pub async fn fetch_or_create(
-        client: Arc<Client>,
+        client: impl Into<Arc<Client>>,
         key: &Key,
         new_account: NewAccount,
     ) -> Result<Self> {
+        let client = client.into();
         let url = &client.directory.new_account;
 
         let jwk = Jwk::try_from(key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
@@ -508,7 +513,7 @@ impl Account {
             },
             Err(e) => {
                 if let crate::api::Error::AcmeError(acme_error_type) = &e
-                    && let crate::api::AcmeErrorType::Unknown(v) = &acme_error_type.type_
+                    && let crate::api::ProblemType::Unknown(v) = &acme_error_type.type_
                     && v.as_ref() == "conflict"
                 {
                     return Err(Error::ExistingAccountDuringKeyRollover);

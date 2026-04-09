@@ -48,6 +48,7 @@ serde_with = { version = "3" }
 sha2 = "0.10"
 strum = "0.28"
 strum_macros = "0.28"
+# time = { version = "0.3", optional = true }
 thiserror = "2"
 tokio = { version = "1", features = [
   "macros",
@@ -72,3 +73,5 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [features]
 default = ["tracing"]
 tracing = ["dep:tracing"]
+# time = ["dep:time"]
+# chrone = ["dep:chrono"]

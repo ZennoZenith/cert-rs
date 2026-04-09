@@ -9,8 +9,6 @@
 #![allow(clippy::multiple_crate_versions)] // FIX:
 // #![allow(dead_code)] // FIX: For exploratory dev.
 
-use std::sync::Arc;
-
 use cert_rs::{
     Client, Error, Key, LetsEncrypt,
     account::{Account, NewAccount},
@@ -82,7 +80,6 @@ async fn main() -> color_eyre::eyre::Result<()> {
     });
 
     let client = Client::new(client, directory_url).await?;
-    let arc_client = Arc::from(client);
     // dbg!(&client.directory());
 
     let account_create = NewAccount {
@@ -98,7 +95,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
     )?;
     let key_2 = Key::new_ec(cert_rs::EcCurve::P256)?;
 
-    let account = Account::create(arc_client.clone(), key_1, account_create).await?;
+    let account = Account::create(client, key_1, account_create).await?;
 
     let account = account.key_rollover(key_2).await?;
     // //// OR

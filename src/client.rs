@@ -6,7 +6,7 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use crate::{
-    AcmeError, AcmeErrorType, Result,
+    Problem, ProblemType, Result,
     authentication::{JwkOrKid, Jws, JwsProtectedHeaders, Key},
     directory::Directory,
 };
@@ -123,8 +123,8 @@ impl Client {
                 .await;
 
             match maybe_response {
-                Err(ApiError::AcmeError(AcmeError {
-                    type_: AcmeErrorType::BadNonce,
+                Err(ApiError::AcmeError(Problem {
+                    type_: ProblemType::BadNonce,
                     ..
                 })) => {
                     println!("Bad nonce. retrying... {}", i + 1);

@@ -198,7 +198,7 @@ impl TryFrom<LetsEncrypt> for Url {
 /// Helper type to reference ``ZeroSSL`` server URL
 ///
 /// ``ZeroSSL`` ACME only supports production at the moment
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
 pub enum ZeroSsl {
     Production,

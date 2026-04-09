@@ -1,7 +1,7 @@
 //! Order Management
 
 use crate::{
-    AcmeError, Error, Result,
+    Problem, Error, Result,
     account::Account,
     api::{EmptyString, extract_location_header},
     authentication::JwkOrKid,
@@ -177,7 +177,7 @@ pub struct Order {
     /// The requested value of the notAfter field in the certificate
     pub not_after: Option<TimeRfc3339>,
     // TODO: error object type
-    pub error: Option<AcmeError>,
+    pub error: Option<Problem>,
 
     pub authorizations: Vec<Url>,
 

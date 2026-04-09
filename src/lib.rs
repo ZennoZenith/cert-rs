@@ -25,7 +25,7 @@ pub mod challenge;
 pub mod directory;
 pub mod order;
 
-pub use api::{AcmeError, AcmeErrorType, Error as ApiError};
+pub use api::{Error as ApiError, Problem, ProblemType};
 pub use authentication::{
     EcCurve, Key, Kid, OkpCurve, RsaKeyBits,
     key_dto::{KeyDto, VersionedKeyDto},
