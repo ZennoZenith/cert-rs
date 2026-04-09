@@ -1,6 +1,5 @@
 //! Account Management
 //!
-//!
 //! Create an account on an ACME server and perform some modifications to
 //! the account after it has been created.
 

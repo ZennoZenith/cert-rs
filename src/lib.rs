@@ -26,7 +26,11 @@ pub mod directory;
 pub mod order;
 
 pub use api::{AcmeError, AcmeErrorType, Error as ApiError};
-pub use authentication::*;
+pub use authentication::{
+    EcCurve, Key, Kid, OkpCurve, RsaKeyBits,
+    key_dto::{KeyDto, VersionedKeyDto},
+    singing_algo::{EcSigningAlgorithm, OkpSigningAlgorithm, RsaSigningAlgorithm},
+};
 pub use client::Client;
 pub use directory::{LetsEncrypt, ZeroSsl};
 pub use error::{Error, Result};
