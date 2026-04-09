@@ -11,12 +11,18 @@
 #![warn(clippy::perf)]
 #![allow(clippy::multiple_crate_versions)] // FIX:
 
+pub(crate) const CRATE_USER_AGENT: &str = concat!("cert-rs/", env!("CARGO_PKG_VERSION"));
+pub(crate) const JOSE_JSON: &str = "application/jose+json";
+pub(crate) const REPLAY_NONCE: &str = "Replay-Nonce";
+pub(crate) const LANGUAGE: &str = "en-US,en;q=0.9";
+
 mod api;
 mod authentication;
 mod b64;
 mod client;
 mod csr;
 mod error;
+mod retry;
 mod time;
 
 pub mod account;
@@ -34,3 +40,4 @@ pub use authentication::{
 pub use client::Client;
 pub use directory::{LetsEncrypt, ZeroSsl};
 pub use error::{Error, Result};
+pub use retry::RetryPolicy;

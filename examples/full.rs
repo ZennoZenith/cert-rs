@@ -10,12 +10,13 @@
 // #![allow(dead_code)] // FIX: For exploratory dev.
 
 use cert_rs::{
-    Client, Error, Key, LetsEncrypt,
+    Client, Error, Key, LetsEncrypt, RetryPolicy,
     account::{Account, NewAccount},
     authorization::Authorization,
     challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
     order::{NewOrder, Order, OrderStatus},
 };
+use chrono::Duration;
 use clap::Parser;
 use colored::Colorize;
 use tracing_subscriber::EnvFilter;
@@ -79,7 +80,8 @@ async fn main() -> color_eyre::eyre::Result<()> {
         Url::try_from(LetsEncrypt::Staging).expect("NOT A URL")
     });
 
-    let client = Client::new(client, directory_url).await?;
+    let nonce_retry_policy = RetryPolicy::new(Duration::zero(), 1.0, Duration::seconds(5));
+    let client = Client::new(client, directory_url, Some(nonce_retry_policy)).await?;
     // dbg!(&client.directory());
 
     let account_create = NewAccount {

@@ -1,3 +1,5 @@
+use chrono::{DateTime, Utc};
+
 use crate::{ApiError, account::AccountStatus};
 
 pub type Result<T> = std::result::Result<T, Error>;
@@ -38,6 +40,13 @@ pub enum Error {
         "Key rollover aborted: an account derived from the provided private key already exists; using existing account instead."
     )]
     ExistingAccountDuringKeyRollover,
+
+    #[error("timed out waiting for an order update")]
+    Timeout(DateTime<Utc>),
+
+    /// Miscellaneous errors
+    #[error("Unhandled data: {0}")]
+    Str(&'static str),
 }
 
 impl From<reqwest::Error> for Error {

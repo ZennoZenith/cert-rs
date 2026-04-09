@@ -58,7 +58,6 @@ pebble:
     # PEBBLE_WFE_ORDERS_PER_PAGE: 15
     
     # pebble -config ./pebble/config.json -strict -dnsserver 10.30.50.3:8053
-    # PEBBLE_WFE_NONCEREJECT=0 PEBBLE_VA_NOSLEEP=1 pebble -config ./pebble/config.json -dnsserver 127.0.0.1:8053
     PEBBLE_WFE_NONCEREJECT=0 PEBBLE_VA_NOSLEEP=1 pebble -config ./pebble/config.json -dnsserver 127.0.0.1:8053
 
 pebble-challtestsrv:

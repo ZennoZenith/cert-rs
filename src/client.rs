@@ -1,12 +1,13 @@
+use chrono::Duration;
 use http::HeaderMap;
 use reqwest::Response;
 use serde::Serialize;
-use std::{collections::VecDeque, fmt};
+use std::{collections::VecDeque, fmt, ops::ControlFlow};
 use tokio::sync::Mutex;
 use url::Url;
 
 use crate::{
-    Problem, ProblemType, Result,
+    Problem, ProblemType, REPLAY_NONCE, Result, RetryPolicy,
     authentication::{JwkOrKid, Jws, JwsProtectedHeaders, Key},
     directory::Directory,
 };
@@ -16,8 +17,6 @@ use crate::api::{
 };
 
 const MAX_NONCE_STORE_CAPACITY: usize = 100;
-const MAX_NONCE_RETRIES: usize = 10;
-const NONCE_RETRIES_DURATION_MS: u64 = 500;
 
 #[derive(Debug)]
 pub struct Client {
@@ -27,13 +26,40 @@ pub struct Client {
     #[allow(clippy::struct_field_names)]
     client: reqwest::Client,
     nonce_store: Mutex<VecDeque<Box<str>>>,
+    nonce_retry_policy: RetryPolicy,
 }
 
 impl Client {
+    /// Creates a new instance by fetching the ACME directory and initializing
+    /// internal state.
+    ///
+    /// This function performs an asynchronous request to the provided `directory_url`
+    /// using the given `client` to retrieve the ACME directory metadata.
+    ///
+    /// If `nonce_retry_policy` is not provided, a default policy is used with:
+    /// - no initial delay,
+    /// - a 3-second timeout,
+    /// - and no exponential backoff.
+    ///
+    /// # Parameters
+    /// - `client`: The HTTP client used to make requests.
+    /// - `directory_url`: The URL of the ACME directory endpoint.
+    /// - `nonce_retry_policy`: Optional retry policy for nonce acquisition.
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
-    pub async fn new(client: reqwest::Client, directory_url: Url) -> Result<Self> {
+    /// Returns an error if:
+    /// - The directory cannot be fetched from `directory_url`.
+    /// - The HTTP request fails (e.g., network issues, DNS resolution failure).
+    /// - The server returns an invalid or unexpected response.
+    /// - The directory response cannot be parsed into a valid `Directory`.
+    ///
+    /// Any error returned by ``Directory::new_from_url_with_client`` is propagated.
+    pub async fn new(
+        client: reqwest::Client,
+        directory_url: Url,
+        nonce_retry_policy: Option<RetryPolicy>,
+    ) -> Result<Self> {
         let directory = Directory::new_from_url_with_client(&client, &directory_url).await?;
 
         Ok(Self {
@@ -41,20 +67,18 @@ impl Client {
             directory,
             directory_url,
             nonce_store: Mutex::new(VecDeque::with_capacity(MAX_NONCE_STORE_CAPACITY)),
+            nonce_retry_policy: nonce_retry_policy.unwrap_or_else(|| {
+                RetryPolicy::default()
+                    .initial_delay(Duration::zero())
+                    .timeout(Duration::seconds(3))
+                    .backoff(1.0)
+            }),
         })
     }
 
     #[must_use]
     pub const fn directory(&self) -> &Directory {
         &self.directory
-    }
-
-    fn extract_nonce(headers: &HeaderMap) -> Option<Box<str>> {
-        headers
-            .get("replay-nonce")
-            .map(|v| v.to_str())
-            .and_then(std::result::Result::ok)
-            .map(Box::from)
     }
 
     pub(crate) async fn enqueue_nonce(&self, headers: &HeaderMap) {
@@ -96,6 +120,14 @@ impl Client {
         Self::extract_nonce(headers).ok_or(ApiError::MissingReplayNonceHeader)
     }
 
+    fn extract_nonce(headers: &HeaderMap) -> Option<Box<str>> {
+        headers
+            .get(REPLAY_NONCE)
+            .map(|v| v.to_str())
+            .and_then(std::result::Result::ok)
+            .map(Box::from)
+    }
+
     pub(crate) async fn post<T: Clone + fmt::Debug + Serialize>(
         &self,
         url: &Url,
@@ -103,7 +135,10 @@ impl Client {
         auth: JwkOrKid<'_>,
         body: T,
     ) -> ApiResult<Response> {
-        for i in 0..MAX_NONCE_RETRIES {
+        let mut retrying = self.nonce_retry_policy.state();
+        let mut i = 0_usize;
+
+        loop {
             let nonce = self.nonce().await?;
 
             // TODO: try to optimize auth and body clones
@@ -127,16 +162,15 @@ impl Client {
                     type_: ProblemType::BadNonce,
                     ..
                 })) => {
-                    println!("Bad nonce. retrying... {}", i + 1);
-                    // TODO: Set throttle time for env or config or something
-                    tokio::time::sleep(std::time::Duration::from_millis(NONCE_RETRIES_DURATION_MS))
-                        .await;
+                    i += 1;
+                    println!("Bad nonce. retrying... {i}");
+
+                    if let ControlFlow::Break(_) = retrying.wait(None).await {
+                        return Err(ApiError::Timeout);
+                    }
                 }
-                response => return response,
+                response => break response,
             }
         }
-
-        println!("Could not get nonce after max({MAX_NONCE_RETRIES}) retries");
-        Err(ApiError::MaxNonceRetry(MAX_NONCE_RETRIES))
     }
 }

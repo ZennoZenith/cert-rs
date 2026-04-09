@@ -205,9 +205,36 @@ impl<'de> Deserialize<'de> for AccountCredentials {
 }
 
 impl AccountCredentials {
+    /// Constructs an account from previously persisted credentials.
+    ///
+    /// This is typically used when resuming an existing ACME account session
+    /// without re-registering with the ACME server.
+    ///
+    /// # ACME Context
+    /// In RFC 8555, accounts are identified by a Key ID (`kid`) issued by the
+    /// server during account creation. The corresponding private key must be
+    /// retained by the client to authenticate subsequent requests.
+    ///
+    /// This constructor rebuilds the internal JWK representation from the
+    /// stored private key to enable request signing.
+    ///
+    /// # Parameters
+    /// - `directory_url`: The ACME directory URL associated with this account.
+    /// - `kid`: The account Key ID assigned by the ACME server.
+    /// - `key`: The persisted private key used to authenticate requests.
+    ///
+    /// # Returns
+    /// Returns an initialized [`Account`] ready to perform authenticated ACME
+    /// operations (orders, authorizations, etc.).
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The provided private key cannot be converted into a JWK representation.
+    /// - The key format is unsupported or malformed.
+    /// - Internal cryptographic conversion fails.
+    ///
+    /// Any error during JWK conversion is propagated as [`Error`].
     pub fn load_from_parts(directory_url: Url, kid: Kid, key: Key) -> Result<Self> {
         let jwk =
             Jwk::try_from(&key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
@@ -259,7 +286,7 @@ impl Account {
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// TODO:
     pub async fn create(
         client: impl Into<Arc<Client>>,
         key: Key,
@@ -270,7 +297,7 @@ impl Account {
             ..new_account
         };
 
-        Self::fetch_or_create(client, &key, new_account).await
+        Self::get_or_create(client, &key, new_account).await
     }
 
     /// Fetch account by sending a POST request to the server's newAccount URL.
@@ -281,15 +308,13 @@ impl Account {
     /// # Errors
     ///
     /// Will fail if account does not exist `AcmeErrorType::AccountDoesNotExist`.
-    ///
-    /// TODO: Write error docs
     pub async fn fetch(client: impl Into<Arc<Client>>, key: &Key) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(true),
             ..Default::default()
         };
 
-        Self::fetch_or_create(client, key, new_account).await
+        Self::get_or_create(client, key, new_account).await
     }
 
     /// Create new account by sending a POST request to the server's newAccount URL
@@ -297,8 +322,8 @@ impl Account {
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
-    pub async fn fetch_or_create(
+    /// TODO:
+    pub async fn get_or_create(
         client: impl Into<Arc<Client>>,
         key: &Key,
         new_account: NewAccount,
@@ -313,8 +338,17 @@ impl Account {
 
         let response = client.post(url, key, auth, body).await?;
 
-        // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
         let kid: Kid = extract_location_header(response.headers()).map(Into::into)?;
+
+        #[cfg(feature = "tracing")]
+        {
+            // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
+            if response.status() == StatusCode::OK {
+                tracing::warn!("Account already exist for give credentials");
+            } else if response.status() == StatusCode::CREATED {
+                tracing::warn!("Account Created.");
+            }
+        }
 
         let account_object = response
             .json::<AccountObject>()
@@ -338,9 +372,34 @@ impl Account {
         })
     }
 
+    /// Retrieves an existing ACME account object from the server without creating a new account.
+    ///
+    /// This function uses the `onlyReturnExisting` flag as defined in RFC 8555 to query
+    /// whether an account already exists for the given key. If the account exists, the
+    /// server returns the corresponding [`AccountObject`]; otherwise, the request fails.
+    ///
+    /// # ACME Context
+    /// In RFC 8555, account creation is performed via the `newAccount` endpoint. Clients
+    /// can include the `onlyReturnExisting` field to avoid accidentally creating a new
+    /// account, which is useful during account resumption flows.
+    ///
+    /// This request must be authenticated using the account's public key (JWK), not a `kid`,
+    /// since the account may not yet exist.
+    ///
+    /// # Returns
+    /// The ACME [`AccountObject`] associated with the provided key if it already exists.
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The ACME server does not recognize an existing account for the provided key.
+    /// - The request to the `newAccount` endpoint fails (network, TLS, or signing issues).
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be deserialized into an [`AccountObject`].
+    /// - The key cannot be converted into a valid JWK representation.
+    ///
+    /// Any cryptographic conversion, HTTP request failure, or JSON parsing error is
+    /// propagated as [`Error`].
     pub async fn get_account_object(client: &Client, key: &Key) -> Result<AccountObject> {
         let new_account = NewAccount {
             only_return_existing: Some(true),
@@ -372,7 +431,7 @@ impl Account {
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// TODO:
     pub async fn update(&self, update_account: UpdateAccount) -> Result<Self> {
         #[derive(Deserialize)]
         struct IntermidiateAccount {
@@ -423,9 +482,7 @@ impl Account {
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
-    ///
-    /// # Panics
+    /// TODO:
     ///
     /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
     pub async fn key_rollover(self, new_key: Key) -> Result<Self> {
@@ -445,7 +502,7 @@ impl Account {
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// TODO:
     ///
     /// # Panics
     ///
@@ -537,7 +594,7 @@ impl Account {
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// TODO:
     pub async fn deactivate(self) -> Result<()> {
         let url = &self.credentials.kid.as_url();
 

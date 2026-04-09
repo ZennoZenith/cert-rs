@@ -1,14 +1,16 @@
+use std::fmt;
+
+use chrono::{DateTime, Duration, Utc};
 use http::{
     HeaderMap, HeaderValue,
-    header::{CONTENT_LENGTH, CONTENT_TYPE, LOCATION, USER_AGENT},
+    header::{ACCEPT_LANGUAGE, CONTENT_LENGTH, CONTENT_TYPE, LOCATION, RETRY_AFTER, USER_AGENT},
 };
 use mime::Mime;
 use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _};
-use std::fmt;
 use url::Url;
 
-use crate::Client;
+use crate::{CRATE_USER_AGENT, Client, JOSE_JSON, LANGUAGE};
 
 const ACME_PREFIX: &str = "urn:ietf:params:acme:error:";
 
@@ -56,6 +58,7 @@ pub enum Error {
     #[error(transparent)]
     HeaderToStr(#[from] http::header::ToStrError),
 
+    /// TODO: remove
     /// The `Location` header is missing from a response that requires it.
     #[error("Location Header does not exist.")]
     MissingLocationHeader,
@@ -64,9 +67,16 @@ pub enum Error {
     #[error("Cannot parse location header as Url.")]
     LocationHeaderNotUrl,
 
+    #[error("Cannot parse header: {0}")]
+    HeaderValueParse(&'static str),
+
     /// The `replay-nonce` header is missing from a response that requires it.
     #[error("replay-nonce Header does not exist.")]
     MissingReplayNonceHeader,
+
+    /// TODO:
+    #[error("Timoout")]
+    Timeout,
 }
 
 /// # ACME problem document
@@ -238,6 +248,29 @@ pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
         .map_err(|_| Error::LocationHeaderNotUrl)
 }
 
+/// # Error
+///
+pub fn extract_retry_after(headers: &HeaderMap) -> Result<DateTime<Utc>> {
+    let value = headers
+        .get(RETRY_AFTER)
+        .ok_or(Error::HeaderValueParse("Retry After header not found"))?
+        .to_str()
+        .map_err(|_| Error::HeaderValueParse("Retry After header cannot be parsed as string"))?
+        .trim();
+
+    let now = Utc::now();
+
+    // Case 1: seconds
+    if let Ok(secs) = value.parse::<i64>() {
+        return Ok(now + Duration::seconds(secs));
+    }
+
+    // Case 2: `HTTP-date` looks like `Fri, 31 Dec 1999 23:59:59 GMT`
+    httpdate::parse_http_date(value)
+        .map(Into::into)
+        .map_err(|_| Error::HeaderValueParse("Retry After header cannot be parsed.")) // Case 3: invalid header
+}
+
 async fn parse_acme_error(response: Response) -> Result<Problem> {
     response
         .json::<Problem>()
@@ -250,14 +283,12 @@ pub trait RequestBuilderExt {
 }
 
 impl RequestBuilderExt for RequestBuilder {
+    /// See [RFC 8555 §6.2](https://datatracker.ietf.org/doc/html/rfc8555#section-6.1),
+    /// [RFC 7231](https://datatracker.ietf.org/doc/html/rfc7231)
     fn add_rfc_headers(self) -> Self {
-        // TODO: add rfc
-        // [RFC 8555 §6.2](https://datatracker.ietf.org/doc/html/rfc8555#section-6.2)
-        self.header(USER_AGENT, HeaderValue::from_static("cert-rs 0.1"))
-            .header(
-                CONTENT_TYPE,
-                HeaderValue::from_static("application/jose+json"),
-            )
+        self.header(USER_AGENT, HeaderValue::from_static(CRATE_USER_AGENT))
+            .header(CONTENT_TYPE, HeaderValue::from_static(JOSE_JSON))
+            .header(ACCEPT_LANGUAGE, HeaderValue::from_static(LANGUAGE))
     }
 }
 

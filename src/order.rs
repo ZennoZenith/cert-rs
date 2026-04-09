@@ -1,9 +1,11 @@
 //! Order Management
 
+use std::ops::ControlFlow;
+
 use crate::{
-    Problem, Error, Result,
+    Error, Problem, Result, RetryPolicy,
     account::Account,
-    api::{EmptyString, extract_location_header},
+    api::{EmptyString, extract_location_header, extract_retry_after},
     authentication::JwkOrKid,
     b64, csr,
     time::TimeRfc3339,
@@ -34,13 +36,44 @@ pub enum IdentifierType {
     Dns,
 }
 
-/// TODO: docs
+/// An ACME identifier object describing the entity for which a certificate
+/// is requested.
+///
+/// In the ACME protocol [RFC 8555], identifiers are used in `newOrder`
+/// requests to indicate the subject(s) that should be included in the
+/// issued certificate. Most commonly, this represents a domain name
+/// (DNS identifier).
+///
+/// # ACME Context
+/// Each identifier consists of a `type` and a `value`. The CA uses this
+/// information to determine what kind of validation challenges must be
+/// completed (e.g., DNS-01, HTTP-01).
+///
+/// For example, a DNS identifier might look like:
+/// ```json
+/// { "type": "dns", "value": "example.com" }
+/// ```
+///
+/// # References
+/// - [RFC 8555 §7.1.3] (Order Objects)
+/// - [RFC 8555 §9.7.7] (Identifier Types)
+///
+/// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
+/// [RFC 8555 §7.1.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.3
+/// [RFC 8555 §9.7.7]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Identifier {
-    /// [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7)
+    /// The type of identifier (e.g., `"dns"` for domain names).
+    ///
+    /// Defined in [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7).
+    /// This determines how the identifier should be validated.
     #[serde(rename = "type")]
     pub type_: IdentifierType,
-    /// The identifier itself
+
+    /// The identifier value.
+    ///
+    /// For `dns` identifiers, this is the fully qualified domain name (FQDN)
+    /// to be validated and included in the certificate.
     pub value: String,
 }
 
@@ -192,28 +225,48 @@ pub struct Order {
 }
 
 impl Order {
-    /// Create new order by sending a POST request to the server's newOrder resource
+    /// Creates a new ACME order by sending a signed POST request to the server's
+    /// `newOrder` endpoint.
     ///
-    /// Returns: (Url: ordre url, Order)
+    /// On success, the ACME server returns an order object along with a `Location`
+    /// header containing the canonical URL for the created order.
     ///
-    /// Refer [RFC 8555 §7.4](https://datatracker.ietf.org/doc/html/rfc8555#section-7.4)
+    /// # Returns
+    /// A tuple containing:
+    /// - `Url`: The order URL (from the `Location` header), used for subsequent
+    ///   interactions (e.g., polling status, finalization).
+    /// - `Order`: The parsed order object returned by the ACME server.
+    ///
+    /// # ACME Context
+    /// This corresponds to the "newOrder" request defined in [RFC 8555 §7.4].
+    /// The request must be authenticated using the account's key (JWS with `kid`),
+    /// and includes one or more identifiers describing the certificate subjects.
+    ///
+    /// The returned order will typically include:
+    /// - authorization URLs to complete challenges
+    /// - a finalize URL to submit a CSR
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The POST request to the `newOrder` endpoint fails (e.g., network issues,
+    ///   TLS errors, or request signing failures).
+    /// - The server responds with a non-success status code.
+    /// - The `Location` header is missing or cannot be parsed into a valid `Url`.
+    /// - The response body cannot be deserialized into an `Order`.
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from the underlying HTTP client, header extraction, or JSON
+    /// deserialization is propagated.
+    ///
+    /// [RFC 8555 §7.4]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.4
     pub async fn create(account: &Account, new_order: NewOrder) -> Result<(Url, Self)> {
         let url = &account.client.directory().new_order;
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = new_order;
 
-        let response = account
-            .client
-            .post(url, &account.credentials.key, auth, body)
-            .await?;
-
-        // TODO: If the server is willing to issue the requested certificate,
-        // it responds with a 201 (Created) response.
+        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
 
         let order_url: Url = extract_location_header(response.headers())?;
         let order = response.json::<Self>().await?;
@@ -221,60 +274,145 @@ impl Order {
         Ok((order_url, order))
     }
 
+    /// Fetches the current status of an existing ACME order.
+    ///
+    /// This sends a POST-as-GET request (as required by the ACME protocol)
+    /// to the order URL and returns the latest representation of the order.
+    ///
+    /// # ACME Context
+    /// Order resources are polled by the client to track progress through
+    /// the issuance workflow (e.g., `pending`, `ready`, `processing`, `valid`,
+    /// or `invalid`). This operation uses a POST request with an empty payload
+    /// authenticated via the account's key (`kid`), as specified in RFC 8555.
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The POST-as-GET request to the `order_url` fails (e.g., network issues,
+    ///   TLS errors, or request signing failures).
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be deserialized into an `Order`.
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from the underlying HTTP client or JSON deserialization
+    /// is propagated.
     pub async fn status(account: &Account, order_url: &Url) -> Result<Self> {
         let url = order_url;
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = EmptyString;
 
-        let response = account
-            .client
-            .post(url, &account.credentials.key, auth, body)
-            .await?;
+        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
 
         let order = response.json::<Self>().await?;
 
         Ok(order)
     }
 
-    /// Returns csr
+    /// Polls an ACME order until it reaches a terminal state or the retry policy
+    /// is exhausted.
+    ///
+    /// This function repeatedly performs a POST-as-GET request to the order URL,
+    /// as required by RFC 8555, and evaluates the returned [`OrderStatus`].
+    ///
+    /// The polling loop continues until:
+    /// - The order becomes `Ready`, in which case it can be finalized, or
+    /// - The order becomes `Invalid`, indicating a failed authorization, or
+    /// - The provided [`RetryPolicy`] signals a timeout.
+    ///
+    /// The server’s `Retry-After` header is respected between attempts when present.
+    ///
+    /// # ACME Context
+    /// ACME order resources are asynchronous. After creating an order, clients must
+    /// poll the order endpoint until it transitions from `pending` to either:
+    /// - `ready`: all required authorizations are satisfied
+    /// - `processing`: certificate issuance is in progress
+    /// - `valid`: certificate has been issued (terminal success)
+    /// - `invalid`: one or more challenges failed (terminal failure)
+    ///
+    /// This method only returns early for `Ready` or `Invalid`. Other states will
+    /// continue polling.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - A network or HTTP error occurs while polling the order endpoint.
+    /// - Request signing or authentication fails.
+    /// - The server response cannot be parsed into an [`Order`].
+    /// - The `Retry-After` header is present but invalid or unparseable.
+    /// - The retry policy is exhausted, resulting in an [`Error::Timeout`].
+    ///
+    /// Any error from the underlying HTTP client, header parsing, JSON decoding,
+    /// or retry policy state machine is propagated.
+    pub async fn poll_ready(
+        account: &Account,
+        order_url: &Url,
+        retry_policy: &RetryPolicy,
+    ) -> Result<Self> {
+        let mut retrying = retry_policy.state();
+        let url = order_url;
+
+        loop {
+            let auth = JwkOrKid::Kid(&account.credentials.kid);
+            let body = EmptyString;
+
+            let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+            let retry_after = extract_retry_after(response.headers())?;
+            let order = response.json::<Self>().await?;
+
+            if let OrderStatus::Ready | OrderStatus::Invalid = order.status {
+                break Ok(order);
+            }
+
+            if let ControlFlow::Break(err) = retrying.wait(Some(retry_after)).await {
+                return Err(err);
+            }
+        }
+    }
+
+    /// Finalizes an ACME order by generating a domain key, building a CSR,
+    /// and submitting it to the server's `finalize` endpoint.
+    ///
+    /// This step is performed after all required authorizations have been completed
+    /// and the order is in the `ready` state.
     ///
     /// A CSR encoding the parameters for the certificate being requested
     /// [RFC 2986](https://datatracker.ietf.org/doc/html/rfc2986)
     ///
-    /// If a request to finalize an order is successful, the server will
-    /// return a 200 (OK) with an updated order object.
+    /// # ACME Context
+    /// In RFC 8555, finalization is the step where the client proves control over
+    /// the requested identifiers by submitting a Certificate Signing Request (CSR).
+    /// The CA uses this CSR to issue the final X.509 certificate.
     ///
-    /// The status of the order will indicate what action the client should take:
+    /// This function:
+    /// - Generates a new 4096-bit RSA private key for the domain
+    /// - Constructs a CSR containing all identifiers in the order
+    /// - Encodes the CSR in base64url format
+    /// - Submits it to the ACME server's `finalize` endpoint
     ///
-    /// - "invalid": The certificate will not be issued. Consider this
-    ///   order process abandoned.
+    /// # Security Note
+    /// TODO:
+    /// A fresh private key is generated for the certificate. The caller is
+    /// responsible for persisting the key if it needs to be reused.
     ///
-    /// - "pending": The server does not believe that the client has
-    ///   fulfilled the requirements. Check the "authorizations" array for
-    ///   entries that are still pending.
-    ///
-    /// - "ready": The server agrees that the requirements have been
-    ///   fulfilled, and is awaiting finalization. Submit a finalization
-    ///   request.
-    ///
-    /// - "processing": The certificate is being issued. Send a POST-as-GET
-    ///   request after the time given in the Retry-After header field of
-    ///   the response, if any.
-    ///
-    /// - "valid": The server has issued the certificate and provisioned its
-    ///   URL to the "certificate" field of the order. Download the
-    ///   certificate.
-    ///
-    /// See [RFC 8555 §7.4](https://datatracker.ietf.org/doc/html/rfc8555#section-7.4)
+    /// # Returns
+    /// Returns the generated [`X509Req`] representing the CSR that was submitted.
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - RSA key generation fails (e.g., system RNG failure).
+    /// - Conversion of the RSA key into a [`PKey`] fails.
+    /// - CSR generation from the domain key and identifiers fails.
+    /// - CSR encoding to DER fails.
+    /// - Base64url encoding of the CSR fails (if applicable).
+    /// - The POST request to the `finalize` endpoint fails (network, TLS, or signing issues).
+    /// - The ACME server rejects the request or returns an error response.
+    ///
+    /// Any error from cryptographic operations, CSR construction, encoding,
+    /// or HTTP communication is propagated as [`Error`].
     pub async fn finalize(&self, account: &Account) -> Result<X509Req> {
+        // TODO: generationg domain key
         let domain_key =
             Rsa::generate(4096).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
         let domain_private_key = PKey::from_rsa(domain_key)
@@ -295,21 +433,52 @@ impl Order {
             "csr": csr_der_encoded
         });
 
-        account
-            .client
-            .post(url, &account.credentials.key, auth, body)
-            .await?;
+        account.client.post(url, &account.credentials.key, auth, body).await?;
 
         Ok(csr)
     }
 
-    /// Download the issued certificate, sends a POST- as-GET request to the certificate URL.
+    /// Downloads the issued certificate for this ACME order using a
+    /// POST-as-GET request to the certificate URL.
     ///
-    /// See [RFC 8555 §7.4.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.4.2)
+    /// This is the final step of the ACME issuance flow, where the client
+    /// retrieves the signed certificate chain once the order is marked as
+    /// `valid`.
+    ///
+    /// # ACME Context
+    /// In [RFC 8555 §7.4.2], the certificate URL provided in the finalized order
+    /// is used to fetch the issued certificate. The request is performed as a
+    /// POST-as-GET authenticated request using the account key.
+    ///
+    /// The response is typically a PEM-encoded certificate chain, usually with
+    /// content type:
+    /// `application/pem-certificate-chain; charset=utf-8`
+    ///
+    /// Some servers MAY also provide alternative representations via
+    /// `Link` headers with relation `"alternate"`.
+    ///
+    /// # Returns
+    /// A PEM-encoded certificate chain as a `String`.
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The certificate URL is not present in the order (`CertificateUrlNotPresent`).
+    /// - The POST-as-GET request to the certificate endpoint fails (network,
+    ///   TLS, or signing errors).
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be read as UTF-8 text.
+    /// - The ACME server returns a malformed or empty certificate response.
+    ///
+    /// Any error from the HTTP client or response decoding is propagated.
+    ///
+    /// # Notes
+    /// - The function currently assumes PEM format; DER or alternate formats are
+    ///   not handled yet.
+    /// - Future improvements may include explicit content-type validation and
+    ///   support for alternate certificate representations.
+    ///
+    /// [RFC 8555 §7.4.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.4.2
     pub async fn download_cert(&self, account: &Account) -> Result<String> {
         let Some(url) = &self.certificate else {
             return Err(Error::CertificateUrlNotPresent);
@@ -319,10 +488,7 @@ impl Order {
         let body = EmptyString;
 
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
-        let response = account
-            .client
-            .post(url, &account.credentials.key, auth, body)
-            .await?;
+        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
         // response "content-type": "application/pem-certificate-chain; charset=utf-8",
 
         // TODO: The default format of the certificate is application/pem-certificate-
