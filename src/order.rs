@@ -6,8 +6,9 @@ use crate::{
     Error, Problem, Result, RetryPolicy,
     account::Account,
     api::{EmptyString, extract_location_header, extract_retry_after},
-    authentication::JwkOrKid,
-    b64, csr,
+    b64,
+    crypto::jwk::JwkOrKid,
+    csr,
     time::TimeRfc3339,
 };
 

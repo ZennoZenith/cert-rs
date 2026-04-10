@@ -10,9 +10,12 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeStru
 use url::Url;
 
 use crate::{
-    Client, Error, Result,
+    Client, Error, Key, Kid, Result,
     api::extract_location_header,
-    authentication::{Jwk, JwkOrKid, Jws, JwsProtectedHeaders, Key, Kid},
+    crypto::{
+        jwk::{Jwk, JwkOrKid},
+        jws::{Jws, JwsProtectedHeaders},
+    },
 };
 
 /// New Account
@@ -192,7 +195,6 @@ impl<'de> Deserialize<'de> for AccountCredentials {
             directory_url,
         } = Helper::deserialize(deserializer)?;
 
-        // todo: document
         let jwk = Jwk::try_from(&key).map_err(serde::de::Error::custom)?;
 
         Ok(Self {
@@ -271,22 +273,45 @@ impl Account {
         }
     }
 
-    #[must_use]
-    pub fn check(&self) -> bool {
-        // TODO: check if current account object status is valid
-        unimplemented!("check if current account object status is valid")
-    }
-
     pub const fn credentials(&self) -> &AccountCredentials {
         &self.credentials
     }
 
-    /// Create new account or fetch existing by sending a POST request to the server's newAccount URL
-    /// Will overwrite `new_account.only_return_existing` to false.
+    /// Creates a new ACME account or retrieves an existing one by sending a
+    /// POST request to the server's `newAccount` endpoint.
+    ///
+    /// This function ensures that account creation is allowed by explicitly
+    /// setting `only_return_existing` to `false`, overriding any value provided
+    /// in `new_account`.
+    ///
+    /// # ACME Context
+    /// In RFC 8555, the `newAccount` endpoint is used to register a new account
+    /// with the ACME server. If an account with the given key already exists,
+    /// the server may return the existing account instead of creating a new one.
+    ///
+    /// Unlike account lookup (`onlyReturnExisting = true`), this request permits
+    /// account creation and is authenticated using the account key as a JWK.
+    ///
+    /// # Parameters
+    /// - `client`: The ACME client used to communicate with the server.
+    /// - `key`: The private key used to identify and authenticate the account.
+    /// - `new_account`: The account creation payload (contact info, terms of service, etc.).
+    ///
+    /// # Returns
+    /// An initialized [Account] representing either the newly created or
+    /// pre-existing account associated with the given key.
     ///
     /// # Errors
     ///
-    /// TODO:
+    /// Returns an error if:
+    /// - The request to the `newAccount` endpoint fails (e.g., network, TLS, or signing issues).
+    /// - The ACME server rejects the account creation request (e.g., terms of service not agreed).
+    /// - The server responds with a non-success status code.
+    /// - The provided key cannot be converted into a valid JWK representation.
+    /// - The response cannot be parsed into a valid account structure.
+    ///
+    /// Any error from HTTP communication, cryptographic conversion, or response
+    /// deserialization is propagated as [`Error`].
     pub async fn create(
         client: impl Into<Arc<Client>>,
         key: Key,
@@ -298,16 +323,52 @@ impl Account {
         };
 
         Self::get_or_create(client, &key, new_account).await
+        // #[cfg(feature = "tracing")]
+        // {
+        //     // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
+        //     if response.status() == StatusCode::OK {
+        //         tracing::warn!("Account already exist for give credentials");
+        //     } else if response.status() == StatusCode::CREATED {
+        //         tracing::info!("Account Created.");
+        //     }
+        // }
     }
 
-    /// Fetch account by sending a POST request to the server's newAccount URL.
-    /// Will not create a new account if one does not already exist.
+    /// Fetches an existing ACME account by sending a POST request to the
+    /// server's `newAccount` endpoint with `onlyReturnExisting = true`.
     ///
-    /// See [RFC 8555 §7.3.1](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.1)
+    /// This operation will **not** create a new account. If no account exists
+    /// for the provided key, the server will return an error.
+    ///
+    /// # ACME Context
+    /// As defined in [RFC 8555 §7.3.1], clients may query the `newAccount`
+    /// endpoint with the `onlyReturnExisting` flag set to `true` to look up
+    /// an existing account without risking accidental creation.
+    ///
+    /// The request is authenticated using the account key as a JWK, since
+    /// the account's `kid` may not yet be known.
+    ///
+    /// # Parameters
+    /// - `client`: The ACME client used to communicate with the server.
+    /// - `key`: The private key associated with the ACME account.
+    ///
+    /// # Returns
+    /// An [`Account`] corresponding to the existing account associated with
+    /// the provided key.
     ///
     /// # Errors
     ///
-    /// Will fail if account does not exist `AcmeErrorType::AccountDoesNotExist`.
+    /// Returns an error if:
+    /// - No account exists for the given key (`AcmeErrorType::AccountDoesNotExist`).
+    /// - The request to the `newAccount` endpoint fails (network, TLS, or signing issues).
+    /// - The server responds with a non-success status code.
+    /// - The provided key cannot be converted into a valid JWK representation.
+    /// - The response cannot be parsed into a valid account structure.
+    ///
+    /// Any error from HTTP communication, cryptographic conversion, or response
+    /// deserialization is propagated as [`Error`].
+    ///
+    /// [RFC 8555 §7.3.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.1
     pub async fn fetch(client: impl Into<Arc<Client>>, key: &Key) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(true),
@@ -317,12 +378,50 @@ impl Account {
         Self::get_or_create(client, key, new_account).await
     }
 
-    /// Create new account by sending a POST request to the server's newAccount URL
-    /// If account already exists for a given private key, then fetch details else create new account
+    /// Creates a new ACME account or retrieves an existing one using the
+    /// server's `newAccount` endpoint.
+    ///
+    /// If an account already exists for the provided key, the server will return
+    /// the existing account. Otherwise, a new account is created.
+    ///
+    /// # ACME Context
+    /// According to RFC [8555 §7.3], the `newAccount` endpoint serves both account
+    /// creation and retrieval. The client authenticates using a JWK (derived from
+    /// the provided key), since a `kid` is not yet known.
+    ///
+    /// The server response semantics:
+    /// - `201 Created`: A new account was created.
+    /// - `200 OK`: An account already exists for the given key.
+    ///
+    /// The account URL (Key ID / `kid`) is returned via the `Location` header and
+    /// is used for all subsequent authenticated requests.
+    ///
+    /// # Parameters
+    /// - `client`: The ACME client used to communicate with the server.
+    /// - `key`: The private key used to identify and authenticate the account.
+    /// - `new_account`: The account creation payload (e.g., contact info,
+    ///   terms of service agreement).
+    ///
+    /// # Returns
+    /// An initialized [Account] with valid credentials (including `kid`)
+    /// ready for authenticated ACME operations.
     ///
     /// # Errors
     ///
-    /// TODO:
+    /// Returns an error if:
+    /// - The request to the `newAccount` endpoint fails (e.g., network, TLS,
+    ///   or request signing issues).
+    /// - The provided key cannot be converted into a valid JWK representation.
+    /// - The `Location` header is missing or cannot be parsed into a valid `kid`.
+    /// - The response body cannot be deserialized into an [`AccountObject`].
+    /// - The ACME server returns an account with a non-`valid` status
+    ///   (e.g., `deactivated`, `revoked`), resulting in `Error::AccountStatusNoValid`.
+    /// - The server responds with a malformed or unexpected response.
+    ///
+    /// Any error from HTTP communication, header extraction, cryptographic
+    /// conversion, or JSON deserialization is propagated as [`Error`].
+    ///
+    /// [RFC 8555 §7.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3
     pub async fn get_or_create(
         client: impl Into<Arc<Client>>,
         key: &Key,
@@ -339,16 +438,6 @@ impl Account {
         let response = client.post(url, key, auth, body).await?;
 
         let kid: Kid = extract_location_header(response.headers()).map(Into::into)?;
-
-        #[cfg(feature = "tracing")]
-        {
-            // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
-            if response.status() == StatusCode::OK {
-                tracing::warn!("Account already exist for give credentials");
-            } else if response.status() == StatusCode::CREATED {
-                tracing::warn!("Account Created.");
-            }
-        }
 
         let account_object = response
             .json::<AccountObject>()
@@ -422,16 +511,42 @@ impl Account {
         Ok(account_object)
     }
 
-    /// Update account by sending a POST request to the server's account URL (Kid)
+    /// Updates an existing ACME account by sending a signed POST request to the
+    /// account URL (`kid`).
     ///
-    /// Will ignore any updates to the "orders" field, "termsOfServiceAgreed" field,
-    /// the "status" field.
+    /// Only mutable account fields (such as contact information) should be included
+    /// in `update_account`. Fields like `orders`, `termsOfServiceAgreed`, and
+    /// `status` are ignored or controlled by the server and will not be updated
+    /// even if provided.
     ///
-    /// See: [RFC 8555 §7.3.2](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.2)
+    /// # ACME Context
+    /// As defined in RFC [8555 §7.3.2], account updates are performed by sending a
+    /// POST request to the account URL using `kid`-based authentication.
+    ///
+    /// The server processes only permitted fields and returns the updated account
+    /// object. The account must remain in a `valid` state for further use.
+    ///
+    /// # Parameters
+    /// - `update_account`: The set of account fields to update (e.g., contact info).
+    ///
+    /// # Returns
+    /// A refreshed [`Account`] instance reflecting the updated account state.
     ///
     /// # Errors
     ///
-    /// TODO:
+    /// Returns an error if:
+    /// - The request to the account URL fails (e.g., network, TLS, or signing issues).
+    /// - The account key cannot be converted into a valid JWK representation.
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be deserialized into the expected account structure.
+    /// - The returned account status is not `valid` (e.g., `deactivated`, `revoked`),
+    ///   resulting in `Error::AccountStatusNoValid`.
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from HTTP communication, cryptographic conversion, or JSON
+    /// deserialization is propagated as [`Error`].
+    ///
+    /// [RFC 8555 §7.3.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.2
     pub async fn update(&self, update_account: UpdateAccount) -> Result<Self> {
         #[derive(Deserialize)]
         struct IntermidiateAccount {
@@ -470,19 +585,43 @@ impl Account {
         })
     }
 
-    /// Account Key Rollover
+    /// Performs an ACME account key rollover, returning a new [`Account`] with
+    /// updated credentials.
     ///
-    /// Update account public key associated with an account by sending a POST
-    /// request to the server's keyChange URL
+    /// This is a consuming variant of [``Self::key_rollover_mut``]. On success,
+    /// the returned [Account] contains the new key material, and the caller
+    /// should discard the previous instance.
     ///
-    /// If key rollover is success, You should abandon current [Account] and start
-    /// using returned [Account]
+    /// # ACME Context
+    /// As defined in [RFC 8555 §7.3.5], key rollover allows an account to securely
+    /// transition to a new key pair using a nested JWS request to the `keyChange`
+    /// endpoint.
     ///
-    /// See: [RFC 8555 §7.3.5]
+    /// After a successful rollover:
+    /// - The new key becomes the authoritative key for the account.
+    /// - The old key must no longer be used.
+    /// - The client should continue all subsequent operations with the returned
+    ///   [`Account`] instance.
+    ///
+    /// # Parameters
+    /// - `new_key`: The new private key to associate with the account.
+    ///
+    /// # Returns
+    /// A new [Account] instance updated with the rolled-over key.
     ///
     /// # Errors
     ///
-    /// TODO:
+    /// Returns an error if:
+    /// - The underlying key rollover operation fails (see [`Self::key_rollover_mut`]).
+    /// - The old or new key cannot be converted into a valid JWK representation.
+    /// - The request to the `keyChange` endpoint fails (network, TLS, or signing issues).
+    /// - The server reports a conflict (e.g., the new key is already in use),
+    ///   resulting in `Error::ExistingAccountDuringKeyRollover`.
+    /// - Fetching or reconstructing the updated account fails.
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from HTTP communication, cryptographic operations, or account
+    /// retrieval is propagated as [`Error`].
     ///
     /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
     pub async fn key_rollover(self, new_key: Key) -> Result<Self> {
@@ -491,20 +630,45 @@ impl Account {
         Ok(account)
     }
 
-    /// Account Key Rollover
+    /// Performs an ACME account key rollover, replacing the current account key
+    /// with a new one.
     ///
-    /// Update account public key associated with an account by sending a POST
-    /// request to the server's keyChange URL
+    /// This sends a signed request to the server's `keyChange` endpoint to update
+    /// the account’s public key. On success, the current [Account] instance is
+    /// updated in-place with the new credentials.
     ///
-    /// If key rollover is success, current [Account] is updated.
+    /// # ACME Context
+    /// Defined in [RFC 8555 §7.3.5], key rollover is a secure mechanism that allows
+    /// an account to transition to a new key pair without losing account identity.
     ///
-    /// See: [RFC 8555 §7.3.5]
+    /// The request uses a **nested JWS** structure:
+    /// - The **inner JWS** is signed with the *new key* and contains the account
+    ///   URL (`kid`) and the *old key* (as JWK).
+    /// - The **outer JWS** is signed with the *old key* and authenticates the request.
+    ///
+    /// If successful:
+    /// - The server associates the new key with the existing account.
+    /// - Subsequent requests must use the new key.
+    /// - The client typically re-fetches the account using the new key.
+    ///
+    /// # Parameters
+    /// - `new_key`: The new private key to associate with the account.
     ///
     /// # Errors
     ///
-    /// TODO:
+    /// Returns an error if:
+    /// - The old or new key cannot be converted into a valid JWK representation.
+    /// - The request to the `keyChange` endpoint fails (e.g., network, TLS,
+    ///   or signing issues).
+    /// - The server responds with an unexpected status code.
+    /// - The server indicates a conflict (e.g., the new key is already associated
+    ///   with another account), resulting in
+    ///   `Error::ExistingAccountDuringKeyRollover`.
+    /// - Fetching the account with the new key after rollover fails.
+    /// - The ACME server returns a malformed or unexpected response.
     ///
-    /// # Panics
+    /// Any error from HTTP communication, nested JWS construction, cryptographic
+    /// conversion, or follow-up account retrieval is propagated as [`Error`].
     ///
     /// [RFC 8555 §7.3.5]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.5
     pub async fn key_rollover_mut(&mut self, new_key: Key) -> Result<()> {
@@ -519,28 +683,6 @@ impl Account {
         }
 
         let url = &self.client.directory.key_change;
-
-        // {
-        //  "protected": base64url({
-        //    "alg": "ES256",
-        //    "kid": "https://example.com/acme/acct/evOfKhNU60wg",
-        //    "nonce": "S9XaOcxP5McpnTcWPIhYuB",
-        //    "url": "https://example.com/acme/key-change"
-        //  }),
-        //  "payload": base64url({
-        //    "protected": base64url({
-        //      "alg": "ES256",
-        //      "jwk": /* new key */,
-        //      "url": "https://example.com/acme/key-change"
-        //    }),
-        //    "payload": base64url({
-        //      "account": "https://example.com/acme/acct/evOfKhNU60wg",
-        //      "oldKey": /* old key */
-        //    }),
-        //    "signature": "Xe8B94RD30Azj2ea...8BmZIRtcSKPSd8gU"
-        //  }),
-        //  "signature": "5TWiqIYQfIDfALQv...x9C2mg8JGPxl5bI4"
-        // }
 
         let old_key = &self.credentials.key;
         let old_jwk =
@@ -588,13 +730,41 @@ impl Account {
         Ok(())
     }
 
-    /// Account Deactivation
+    /// Deactivates the ACME account by sending a POST request to the account URL
+    /// with status set to `"deactivated"`.
     ///
-    /// See: [RFC 8555 §7.3.6](https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6)
+    /// After successful deactivation, the account is permanently disabled and
+    /// can no longer be used to perform ACME operations (e.g., creating orders
+    /// or responding to challenges).
+    ///
+    /// # ACME Context
+    /// As defined in RFC [8555 §7.3.6], account deactivation is performed by
+    /// sending a signed POST request to the account URL (`kid`) with the
+    /// `"status": "deactivated"` field.
+    ///
+    /// This operation is irreversible:
+    /// - The account transitions to the `deactivated` state.
+    /// - The server will reject further requests authenticated with this account.
+    ///
+    /// # Returns
+    /// Returns `Ok(())` if the deactivation request is successfully processed.
     ///
     /// # Errors
     ///
-    /// TODO:
+    /// Returns an error if:
+    /// - The POST request to the account URL fails (e.g., network, TLS,
+    ///   or signing issues).
+    /// - The server responds with a non-success status code.
+    /// - The ACME server rejects the deactivation request.
+    /// - The server returns a malformed or unexpected response.
+    ///
+    /// Any error from HTTP communication or request signing is propagated as [`Error`].
+    ///
+    /// # Notes
+    /// - Since this method consumes `self`, the current [Account] instance
+    ///   cannot be used after calling this function.
+    ///
+    /// [RFC 8555 §7.3.6]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6
     pub async fn deactivate(self) -> Result<()> {
         let url = &self.credentials.kid.as_url();
 

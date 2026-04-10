@@ -1,6 +1,6 @@
 //! Authorization Management
 
-use crate::{Result, account::Account, api::EmptyString, authentication::JwkOrKid, b64};
+use crate::{Result, account::Account, api::EmptyString, b64, crypto::jwk::JwkOrKid};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use url::Url;
@@ -112,7 +112,15 @@ impl Authorization {
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The POST-as-GET request to the challenge URL fails (e.g., network,
+    ///   TLS, or request signing issues).
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be deserialized into a challenge object.
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from HTTP communication or JSON deserialization is propagated
+    /// as [``crate::Error``].
     ///
     /// [RFC 8555 §7.5.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.1
     pub async fn get(account: &Account, url: &Url) -> Result<Self> {
@@ -125,15 +133,42 @@ impl Authorization {
         Ok(authorization)
     }
 
-    /// Deactivating an Authorization
+    /// Deactivates an ACME authorization, relinquishing the ability to issue
+    /// certificates for the associated identifier.
     ///
-    /// To relinquish its authorization to issue certificates for an identifier.
+    /// This sends a signed POST request to the authorization URL with
+    /// `"status": "deactivated"`.
     ///
-    /// See [RFC 8555 §7.5.2]
+    /// # ACME Context
+    /// As defined in [RFC 8555 §7.5.2], clients may deactivate an authorization
+    /// to indicate that they no longer wish to use it for certificate issuance.
+    /// This is typically done when the identifier is no longer under the client's
+    /// control or is no longer needed.
+    ///
+    /// Once deactivated:
+    /// - The authorization becomes invalid for future orders.
+    /// - The server will not allow it to be reused.
+    /// - The operation is generally irreversible.
+    ///
+    /// # Parameters
+    /// - `account`: The ACME account used to authenticate the request.
+    /// - `url`: The authorization URL to deactivate.
+    ///
+    /// # Returns
+    /// The updated authorization object reflecting the new `deactivated` status.
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The POST request to the authorization URL fails (e.g., network, TLS,
+    ///   or request signing issues).
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be deserialized into an authorization object.
+    /// - The ACME server rejects the deactivation request (e.g., invalid state transition).
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from HTTP communication or JSON deserialization is propagated
+    /// as [``crate::Error``].
     ///
     /// [RFC 8555 §7.5.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.2
     pub async fn deactivate(account: &Account, url: &Url) -> Result<Self> {
@@ -162,8 +197,8 @@ impl Authorization {
     ///
     /// `GET /.well-known/acme-challenge/<get_keyauth()>`
     #[must_use]
-    pub fn gen_keyauth(account: &Account, challenge_token: &str) -> String {
-        format!("{challenge_token}.{}", account.credentials.jwk.thumbprint())
+    pub fn gen_keyauth(account: &Account, challenge_token: &str) -> Box<str> {
+        format!("{challenge_token}.{}", account.credentials.jwk.thumbprint()).into_boxed_str()
     }
 
     /// Thumbprint
@@ -181,7 +216,7 @@ impl Authorization {
     #[must_use]
     pub fn gen_sha_256_keyauth(account: &Account, challenge_token: &str) -> String {
         let keyauth = Self::gen_keyauth(account, challenge_token);
-        let hash = Sha256::digest(&keyauth).to_vec();
+        let hash = Sha256::digest(keyauth.as_bytes()).to_vec();
 
         b64::b64u_encode(hash)
     }

@@ -92,10 +92,10 @@ async fn main() -> color_eyre::eyre::Result<()> {
     };
 
     let key_1 = Key::new_rsa(
-        cert_rs::RsaKeyBits::Bits4096,
-        cert_rs::RsaSigningAlgorithm::Rs256,
+        cert_rs::crypto::rsa::RsaKeyBits::Bits4096,
+        cert_rs::crypto::rsa::RsaSigningAlgorithm::Rs256,
     )?;
-    let key_2 = Key::new_ec(cert_rs::EcCurve::P256)?;
+    let key_2 = Key::new_ec(cert_rs::crypto::ec::EcCurve::P256)?;
 
     let account = Account::create(client, key_1, account_create).await?;
 

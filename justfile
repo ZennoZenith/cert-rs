@@ -19,8 +19,8 @@ fmt:
     cargo fmt
 
 doc: 
-    cargo doc --no-deps -p cert-rs
-    # cargo doc --no-deps --document-private-items -p cert-rs
+    cargo doc --no-deps
+    # cargo doc --no-deps --document-private-items
     # cargo doc --no-deps --document-private-items
 
 # integration-test:

@@ -1,7 +1,13 @@
 use serde::{Deserialize, Serialize};
 
-use super::{EcCurve, Key, OkpCurve, RsaKeyBits};
-use crate::{Error, Result};
+use crate::{
+    Error, Key, Result,
+    crypto::{
+        ec::EcCurve,
+        okp::OkpCurve,
+        rsa::{RsaKeyBits, RsaSigningAlgorithm},
+    },
+};
 
 /// Versioned Key Data Transfer Object
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,7 +23,7 @@ pub struct VersionedKeyDto {
 #[serde(rename_all = "UPPERCASE")]
 pub enum KeyDto {
     Rsa {
-        signing_algo: super::RsaSigningAlgorithm,
+        signing_algo: RsaSigningAlgorithm,
         bits: RsaKeyBits,
         pem: String,
     },
@@ -37,8 +43,7 @@ impl TryFrom<&Key> for VersionedKeyDto {
     type Error = Error;
 
     fn try_from(value: &Key) -> Result<Self> {
-        let pem = String::from_utf8(value.to_pem()?)
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let (pem, _) = value.to_pem()?;
 
         match value {
             Key::Rsa {

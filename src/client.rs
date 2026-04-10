@@ -7,8 +7,9 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use crate::{
-    Problem, ProblemType, REPLAY_NONCE, Result, RetryPolicy,
-    authentication::{JwkOrKid, Jws, JwsProtectedHeaders, Key},
+    Key, Problem, ProblemType, REPLAY_NONCE, Result, RetryPolicy,
+    crypto::jwk::JwkOrKid,
+    crypto::jws::{Jws, JwsProtectedHeaders},
     directory::Directory,
 };
 

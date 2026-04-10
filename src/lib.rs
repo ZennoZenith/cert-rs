@@ -17,7 +17,6 @@ pub(crate) const REPLAY_NONCE: &str = "Replay-Nonce";
 pub(crate) const LANGUAGE: &str = "en-US,en;q=0.9";
 
 mod api;
-mod authentication;
 mod b64;
 mod client;
 mod csr;
@@ -28,16 +27,13 @@ mod time;
 pub mod account;
 pub mod authorization;
 pub mod challenge;
+pub mod crypto;
 pub mod directory;
 pub mod order;
 
 pub use api::{Error as ApiError, Problem, ProblemType};
-pub use authentication::{
-    EcCurve, Key, Kid, OkpCurve, RsaKeyBits,
-    key_dto::{KeyDto, VersionedKeyDto},
-    singing_algo::{EcSigningAlgorithm, OkpSigningAlgorithm, RsaSigningAlgorithm},
-};
 pub use client::Client;
+pub use crypto::{key::Key, kid::Kid};
 pub use directory::{LetsEncrypt, ZeroSsl};
 pub use error::{Error, Result};
 pub use retry::RetryPolicy;

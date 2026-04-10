@@ -12,7 +12,7 @@ use crate::{
     Result,
     account::Account,
     api::{EmptyObject, EmptyString},
-    authentication::JwkOrKid,
+    crypto::jwk::JwkOrKid,
     time::TimeRfc3339,
 };
 
@@ -190,17 +190,42 @@ impl KnownChallenge {
         }
     }
 
-    /// Responding to Challenges
+    /// Responds to an ACME challenge by notifying the server that the client
+    /// is ready for validation.
     ///
-    /// Indicates the server that client is ready for the challenge validation
-    /// by sending an empty JSON body ("{}") carried in a POST request to the
-    /// challenge URL (not the authorization URL)
+    /// This sends an empty JSON object (`{}`) in a signed POST request to the
+    /// **challenge URL** (not the authorization URL).
     ///
-    /// See: [RFC 8555 §7.5.1]
+    /// # ACME Context
+    /// As defined in RFC [8555 §7.5.1], once the client has fulfilled the
+    /// requirements of a challenge (e.g., provisioning an HTTP resource or DNS
+    /// record), it must explicitly notify the ACME server to begin validation.
+    ///
+    /// This is done by sending a POST request with an empty payload to the
+    /// challenge URL. The server will then attempt to validate the challenge
+    /// asynchronously.
+    ///
+    /// The returned challenge object reflects the updated state, which may still
+    /// be `pending` or transition to `processing`.
+    ///
+    /// # Parameters
+    /// - `account`: The ACME account used to authenticate the request.
+    /// - `url`: The challenge URL to which the response should be sent.
+    ///
+    /// # Returns
+    /// The updated challenge object as returned by the ACME server.
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The POST request to the challenge URL fails (e.g., network, TLS,
+    ///   or request signing issues).
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be deserialized into a challenge object.
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from HTTP communication or JSON deserialization is propagated
+    /// as [``crate::Error``].
     ///
     /// [RFC 8555 §7.5.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.1
     pub async fn respond(account: &Account, url: &Url) -> Result<Self> {
@@ -208,43 +233,88 @@ impl KnownChallenge {
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = EmptyObject;
-        let response = account
-            .client
-            .post(url, &account.credentials.key, auth, body)
-            .await?;
+        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
 
         let challenge = response.json::<Self>().await?;
         Ok(challenge)
     }
 
-    /// Retrying Challenges
+    /// Retries an ACME challenge by re-sending a response to the challenge URL.
     ///
-    /// Explicitly request a retry by re-sending response to a challenge in a
-    /// new POST request.
+    /// This is equivalent to calling [`Self::respond`] again, allowing the client
+    /// to explicitly request the ACME server to re-attempt validation.
     ///
-    /// See: [RFC 8555 §8.2]
+    /// # ACME Context
+    /// As described in RFC [8555 §8.2], if a challenge validation fails (e.g.,
+    /// due to transient issues like DNS propagation delays or temporary
+    /// misconfiguration), the client may retry by submitting another response
+    /// to the same challenge URL.
+    ///
+    /// The server will then perform a new validation attempt.
+    ///
+    /// # Parameters
+    /// - `account`: The ACME account used to authenticate the request.
+    /// - `url`: The challenge URL to retry.
+    ///
+    /// # Returns
+    /// The updated challenge object as returned by the ACME server.
     ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The POST request to the challenge URL fails (e.g., network, TLS,
+    ///   or request signing issues).
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be deserialized into a challenge object.
+    /// - The ACME server rejects the retry request (e.g., challenge is no longer retryable).
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from [`Self::respond`] is propagated as [``crate::Error``].
     ///
     /// [RFC 8555 §8.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-8.2
     pub async fn retry(account: &Account, url: &Url) -> Result<Self> {
         Self::respond(account, url).await
     }
 
+    /// Retrieves the current state of an ACME challenge.
+    ///
+    /// This performs a POST-as-GET request to the challenge URL and returns
+    /// the latest representation of the challenge object.
+    ///
+    /// # ACME Context
+    /// In [RFC 8555], challenge resources are queried using POST-as-GET requests
+    /// (i.e., POST with an empty payload) authenticated with the account's `kid`.
+    ///
+    /// Clients typically use this to:
+    /// - Poll the status of a challenge after responding
+    /// - Inspect validation results (e.g., `pending`, `processing`, `valid`, `invalid`)
+    ///
+    /// # Parameters
+    /// - `account`: The ACME account used to authenticate the request.
+    /// - `url`: The challenge URL to fetch.
+    ///
+    /// # Returns
+    /// The current challenge object as returned by the ACME server.
+    ///
     /// # Errors
     ///
-    /// TODO: Write error docs
+    /// Returns an error if:
+    /// - The POST-as-GET request to the challenge URL fails (e.g., network,
+    ///   TLS, or request signing issues).
+    /// - The server responds with a non-success status code.
+    /// - The response body cannot be deserialized into a challenge object.
+    /// - The ACME server returns a malformed or unexpected response.
+    ///
+    /// Any error from HTTP communication or JSON deserialization is propagated
+    /// as [``crate::Error``].
+    ///
+    /// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
     pub async fn get(account: &Account, url: &Url) -> Result<Self> {
         let url = &url;
 
         let auth = JwkOrKid::Kid(&account.credentials.kid);
         let body = EmptyString;
-        let response = account
-            .client
-            .post(url, &account.credentials.key, auth, body)
-            .await?;
+        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
 
         let challenge = response.json::<Self>().await?;
         Ok(challenge)
