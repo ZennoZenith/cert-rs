@@ -115,7 +115,7 @@ pub enum RsaSigningAlgorithm {
     /// This is the default and most commonly used RSA signing algorithm
     /// in JOSE and ACME.
     #[default]
-    Rs256,
+    RS256,
 
     /// RSASSA-PKCS1-v1_5 using SHA-384.
     ///
@@ -123,22 +123,22 @@ pub enum RsaSigningAlgorithm {
     ///
     /// Provides a higher security margin than RS256 at the cost of slightly
     /// increased computational overhead.
-    Rs384,
+    RS384,
 
     /// RSASSA-PKCS1-v1_5 using SHA-512.
     ///
     /// JWA identifier: `"RS512"`.
     ///
     /// Uses the strongest SHA-2 variant among the RSASSA-PKCS1-v1_5 options.
-    Rs512,
+    RS512,
 }
 
 impl From<RsaSigningAlgorithm> for &'static str {
     fn from(value: RsaSigningAlgorithm) -> Self {
         match value {
-            RsaSigningAlgorithm::Rs256 => "RS256",
-            RsaSigningAlgorithm::Rs384 => "RS384",
-            RsaSigningAlgorithm::Rs512 => "RS512",
+            RsaSigningAlgorithm::RS256 => "RS256",
+            RsaSigningAlgorithm::RS384 => "RS384",
+            RsaSigningAlgorithm::RS512 => "RS512",
         }
     }
 }
@@ -155,9 +155,9 @@ impl Jwa for RsaSigningAlgorithm {
         Self: std::marker::Sized,
     {
         match value {
-            "RS256" => Ok(Self::Rs256),
-            "RS384" => Ok(Self::Rs384),
-            "RS512" => Ok(Self::Rs512),
+            "RS256" => Ok(Self::RS256),
+            "RS384" => Ok(Self::RS384),
+            "RS512" => Ok(Self::RS512),
             v => Err(format!("Cannot convert `{v}` to RsaSigningAlgorithm")),
         }
     }

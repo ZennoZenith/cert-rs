@@ -3,7 +3,7 @@
 use std::{fmt, ops::ControlFlow};
 
 use crate::{
-    Error, Problem, Result, RetryPolicy,
+    Error, Key, Problem, Result, RetryPolicy,
     account::Account,
     api::{EmptyString, extract_location_header, extract_retry_after},
     b64,
@@ -12,7 +12,7 @@ use crate::{
     time::TimeRfc3339,
 };
 
-use openssl::{pkey::PKey, rsa::Rsa, x509::X509Req};
+use openssl::x509::X509Req;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -378,15 +378,9 @@ impl Order {
     /// The CA uses this CSR to issue the final X.509 certificate.
     ///
     /// This function:
-    /// - Generates a new 4096-bit RSA private key for the domain
     /// - Constructs a CSR containing all identifiers in the order
     /// - Encodes the CSR in base64url format
     /// - Submits it to the ACME server's `finalize` endpoint
-    ///
-    /// # Security Note
-    /// TODO:
-    /// A fresh private key is generated for the certificate. The caller is
-    /// responsible for persisting the key if it needs to be reused.
     ///
     /// # Returns
     /// Returns the generated [`X509Req`] representing the CSR that was submitted.
@@ -394,8 +388,6 @@ impl Order {
     /// # Errors
     ///
     /// Returns an error if:
-    /// - RSA key generation fails (e.g., system RNG failure).
-    /// - Conversion of the RSA key into a [`PKey`] fails.
     /// - CSR generation from the domain key and identifiers fails.
     /// - CSR encoding to DER fails.
     /// - Base64url encoding of the CSR fails (if applicable).
@@ -403,13 +395,8 @@ impl Order {
     /// - The ACME server rejects the request or returns an error response.
     ///
     /// Any error from cryptographic operations, CSR construction, encoding,
-    /// or HTTP communication is propagated as [`Error`].
-    pub async fn finalize(&self, account: &Account) -> Result<X509Req> {
-        // TODO: generationg domain key
-        let domain_key = Rsa::generate(4096).map_err(|_| Error::Crypto("Domain key"))?;
-        let domain_private_key =
-            PKey::from_rsa(domain_key).map_err(|_| Error::Crypto("Domain key"))?;
-
+    /// or HTTP communication is propagated as [Error].
+    pub async fn finalize(&self, account: &Account, domain_key: &Key) -> Result<X509Req> {
         let domains: Vec<&str> = self
             .identifiers
             .iter()
@@ -418,7 +405,7 @@ impl Order {
                 // _ => return Err(Error::Unsupported("Only DNS identifier supported")),
             })
             .collect::<Result<Vec<&str>>>()?;
-        let csr = csr::generate_csr(&domain_private_key, &domains)?;
+        let csr = csr::generate_csr(domain_key, &domains)?;
         let csr_der_bytes = csr.to_der().map_err(|_| Error::Crypto("CSR to der"))?;
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
 

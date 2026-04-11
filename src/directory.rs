@@ -58,8 +58,6 @@ impl Directory {
     ///
     /// # Errors
     ///
-    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
-    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [Self]
     pub async fn new_from_url_with_client(client: &reqwest::Client, url: &Url) -> Result<Self> {
         let response = client
             .get(url.as_str())
@@ -83,8 +81,6 @@ impl Directory {
     ///
     /// # Errors
     ///
-    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
-    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [`Self`]
     pub async fn new_from_url(url: &Url) -> Result<Self> {
         let response = reqwest::Client::new()
             .get(url.as_str())
@@ -108,8 +104,6 @@ impl Directory {
     ///
     /// # Errors
     ///
-    /// - [``Error::DirectoryParse``] — `directory_json` could not be deserialized into [Self]
-    ///
     pub fn new_from_json(directory_json: &str) -> Result<Self> {
         serde_json::from_str(directory_json).map_err(Into::into)
     }
@@ -120,9 +114,7 @@ impl Directory {
     ///
     /// # Errors
     ///
-    /// - [``Error::Url``] — Let's Encrypt production URL could not be parsed
-    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
-    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [Self]
+    /// - [``crate::Error::Url``] — Let's Encrypt production URL could not be parsed
     pub async fn lets_encrypt() -> Result<Self> {
         Self::new_from_url(&Url::try_from(LetsEncrypt::Production)?).await
     }
@@ -133,9 +125,7 @@ impl Directory {
     ///
     /// # Errors
     ///
-    /// - [``Error::Url``] — Let's Encrypt production URL could not be parsed
-    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
-    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [Self]
+    /// - [``crate::Error::Url``] — Let's Encrypt production URL could not be parsed
     pub async fn lets_encrypt_staging() -> Result<Self> {
         Self::new_from_url(&Url::try_from(LetsEncrypt::Staging)?).await
     }
@@ -144,9 +134,7 @@ impl Directory {
     ///
     /// # Errors
     ///
-    /// - [``Error::Url``] — `ZeroSSL` production URL could not be parsed
-    /// - [``Error::Api``] — HTTP request failed or the server returned an ACME error response
-    /// - [``Error::DirectoryParse``] — response body could not be deserialized into [Self]
+    /// - [``crate::Error::Url``] — `ZeroSSL` production URL could not be parsed
     pub async fn zero_ssl() -> Result<Self> {
         Self::new_from_url(&Url::try_from(ZeroSsl::Production)?).await
     }

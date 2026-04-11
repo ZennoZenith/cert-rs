@@ -1,4 +1,4 @@
-use openssl::pkey::PKey;
+use openssl::{hash::MessageDigest, pkey::PKey, sign::Signer};
 use serde::{Serialize, Serializer, ser::SerializeStruct as _};
 use url::Url;
 
@@ -13,6 +13,75 @@ use crate::{
         rsa::RsaSigningAlgorithm,
     },
 };
+
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/// Returns the appropriate message digest for signing the CSR.
+///
+/// - RSA:     matches the key's declared signing algorithm (SHA-256/384/512)
+/// - EC P-256 → SHA-256, P-384 → SHA-384, P-521 → SHA-512  (RFC 5480)
+/// - Ed25519: intrinsic hash, OpenSSL uses `MessageDigest::null()`
+pub fn key_digest(key: &Key) -> MessageDigest {
+    match key {
+        Key::Rsa { signing_algo, .. } => match signing_algo {
+            RsaSigningAlgorithm::RS256 => MessageDigest::sha256(),
+            RsaSigningAlgorithm::RS384 => MessageDigest::sha384(),
+            RsaSigningAlgorithm::RS512 => MessageDigest::sha512(),
+        },
+        Key::Ec { crv, .. } => match crv {
+            EcCurve::P256 => MessageDigest::sha256(),
+            EcCurve::P384 => MessageDigest::sha384(),
+            EcCurve::P521 => MessageDigest::sha512(),
+        },
+        Key::Okp { .. } => MessageDigest::null(),
+    }
+}
+
+fn sign(key: &Key, msg: &[u8]) -> Result<Vec<u8>> {
+    let md = key_digest(key);
+
+    match key {
+        Key::Rsa { key, .. } => {
+            // Optimise:
+            let keypair = PKey::from_rsa(key.clone())
+                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from RSA"))?;
+
+            let mut signer =
+                Signer::new(md, &keypair).map_err(|_| Error::Crypto("Signing Failed"))?;
+
+            signer.update(msg).map_err(|_| Error::Crypto("Signing Failed"))?;
+
+            Ok(signer.sign_to_vec().map_err(|_| Error::Crypto("Signing Failed"))?)
+        }
+
+        Key::Ec { crv, key } => {
+            // Optimise:
+            let keypair = PKey::from_ec_key(key.clone())
+                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from EC"))?;
+
+            let mut signer =
+                Signer::new(md, &keypair).map_err(|_| Error::Crypto("Signing Failed"))?;
+
+            signer.update(msg).map_err(|_| Error::Crypto("Signing Failed"))?;
+
+            let der_sig = signer.sign_to_vec().map_err(|_| Error::Crypto("Signing Failed"))?;
+
+            // IMPORTANT: convert DER → raw (r || s)
+            Ok(ecdsa_der_to_raw(&der_sig, *crv).map_err(|_| Error::Crypto("Signing Failed"))?)
+        }
+
+        Key::Okp { key, .. } => {
+            let mut signer = Signer::new_without_digest(key)
+                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from OKP"))?;
+
+            let signature = signer
+                .sign_oneshot_to_vec(msg)
+                .map_err(|_| Error::Crypto("Signing Failed"))?;
+
+            Ok(signature)
+        }
+    }
+}
 
 /// | JWK Type      | ``SigningAlgorithm``        |
 /// | ------------- | --------------------------- |
@@ -131,70 +200,5 @@ where
         state.serialize_field("payload", &payload_b64)?;
         state.serialize_field("signature", &signature_b64)?;
         state.end()
-    }
-}
-
-fn sign(key: &Key, msg: &[u8]) -> Result<Vec<u8>> {
-    match key {
-        Key::Rsa {
-            signing_algo, key, ..
-        } => {
-            use openssl::hash::MessageDigest;
-            use openssl::sign::Signer;
-
-            let md = match signing_algo {
-                RsaSigningAlgorithm::Rs256 => MessageDigest::sha256(),
-                RsaSigningAlgorithm::Rs384 => MessageDigest::sha384(),
-                RsaSigningAlgorithm::Rs512 => MessageDigest::sha512(),
-            };
-
-            // Optimise:
-            let keypair = PKey::from_rsa(key.clone())
-                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from RSA"))?;
-
-            let mut signer = Signer::new(md, &keypair).map_err(|_| Error::Crypto(""))?;
-
-            signer.update(msg).map_err(|_| Error::Crypto("Signing Failed"))?;
-
-            Ok(signer.sign_to_vec().map_err(|_| Error::Crypto("Signing Failed"))?)
-        }
-
-        Key::Ec { crv, key } => {
-            use openssl::hash::MessageDigest;
-            use openssl::sign::Signer;
-
-            let md = match crv {
-                EcCurve::P256 => MessageDigest::sha256(),
-                EcCurve::P384 => MessageDigest::sha384(),
-                EcCurve::P521 => MessageDigest::sha512(),
-            };
-
-            // Optimise:
-            let keypair = PKey::from_ec_key(key.clone())
-                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from EC"))?;
-
-            let mut signer =
-                Signer::new(md, &keypair).map_err(|_| Error::Crypto("Signing Failed"))?;
-
-            signer.update(msg).map_err(|_| Error::Crypto("Signing Failed"))?;
-
-            let der_sig = signer.sign_to_vec().map_err(|_| Error::Crypto("Signing Failed"))?;
-
-            // IMPORTANT: convert DER → raw (r || s)
-            Ok(ecdsa_der_to_raw(&der_sig, *crv).map_err(|_| Error::Crypto("Signing Failed"))?)
-        }
-
-        Key::Okp { key, .. } => {
-            use openssl::sign::Signer;
-
-            let mut signer = Signer::new_without_digest(key)
-                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from OKP"))?;
-
-            let signature = signer
-                .sign_oneshot_to_vec(msg)
-                .map_err(|_| Error::Crypto("Signing Failed"))?;
-
-            Ok(signature)
-        }
     }
 }

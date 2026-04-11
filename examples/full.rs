@@ -93,7 +93,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     let key_1 = Key::new_rsa(
         cert_rs::crypto::rsa::RsaKeyBits::Bits4096,
-        cert_rs::crypto::rsa::RsaSigningAlgorithm::Rs256,
+        cert_rs::crypto::rsa::RsaSigningAlgorithm::RS256,
     )?;
     let key_2 = Key::new_ec(cert_rs::crypto::ec::EcCurve::P256)?;
 
@@ -180,7 +180,8 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     dbg!(&order);
 
-    let csr = order.finalize(&account).await?;
+    let domain_key = Key::new_ec(cert_rs::crypto::ec::EcCurve::P256)?;
+    let csr = order.finalize(&account, &domain_key).await?;
     let csr_pem = csr.to_pem().map(|v| String::from_utf8_lossy(&v).into_owned())?;
     println!("CSR PEM:\n{csr_pem}");
 

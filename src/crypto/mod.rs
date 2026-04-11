@@ -1,3 +1,5 @@
+//! Key, Jwk, Signing algorithm, etc.
+//!
 pub(crate) mod jwk;
 pub(crate) mod jws;
 
@@ -168,27 +170,27 @@ mod tests {
         let key_fixtures = [
             gen_key_fixture(GenFixtureKey::Rsa(
                 RsaKeyBits::Bits2048,
-                RsaSigningAlgorithm::Rs256,
+                RsaSigningAlgorithm::RS256,
             )),
             gen_key_fixture(GenFixtureKey::Rsa(
                 RsaKeyBits::Bits2048,
-                RsaSigningAlgorithm::Rs384,
+                RsaSigningAlgorithm::RS384,
             )),
             gen_key_fixture(GenFixtureKey::Rsa(
                 RsaKeyBits::Bits2048,
-                RsaSigningAlgorithm::Rs512,
+                RsaSigningAlgorithm::RS512,
             )),
             gen_key_fixture(GenFixtureKey::Rsa(
                 RsaKeyBits::Bits4096,
-                RsaSigningAlgorithm::Rs256,
+                RsaSigningAlgorithm::RS256,
             )),
             gen_key_fixture(GenFixtureKey::Rsa(
                 RsaKeyBits::Bits4096,
-                RsaSigningAlgorithm::Rs384,
+                RsaSigningAlgorithm::RS384,
             )),
             gen_key_fixture(GenFixtureKey::Rsa(
                 RsaKeyBits::Bits4096,
-                RsaSigningAlgorithm::Rs512,
+                RsaSigningAlgorithm::RS512,
             )),
             gen_key_fixture(GenFixtureKey::Ec(EcCurve::P256)),
             gen_key_fixture(GenFixtureKey::Ec(EcCurve::P384)),
