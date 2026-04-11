@@ -64,9 +64,7 @@ impl TryFrom<usize> for RsaKeyBits {
         match value {
             2048 => Ok(Self::Bits2048),
             4096 => Ok(Self::Bits4096),
-            b => Err(Error::Unimplemented(
-                format!("Unknown number of rsa bits: {b}").into(),
-            )),
+            _ => Err(Error::Crypto("Unknown number of rsa bits.")),
         }
     }
 }
@@ -78,9 +76,7 @@ impl TryFrom<u32> for RsaKeyBits {
         match value {
             2048 => Ok(Self::Bits2048),
             4096 => Ok(Self::Bits4096),
-            b => Err(Error::Unimplemented(
-                format!("Unknown number of rsa bits: {b}").into(),
-            )),
+            _ => Err(Error::Crypto("Unknown number of rsa bits.")),
         }
     }
 }

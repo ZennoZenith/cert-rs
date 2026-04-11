@@ -7,14 +7,13 @@ use tokio::sync::Mutex;
 use url::Url;
 
 use crate::{
-    Key, Problem, ProblemType, REPLAY_NONCE, Result, RetryPolicy,
-    crypto::jwk::JwkOrKid,
-    crypto::jws::{Jws, JwsProtectedHeaders},
+    Error, Key, Problem, ProblemType, REPLAY_NONCE, Result, RetryPolicy,
+    api::{RequestBuilderExt as _, ResponseExt as _},
+    crypto::{
+        jwk::JwkOrKid,
+        jws::{Jws, JwsProtectedHeaders},
+    },
     directory::Directory,
-};
-
-use crate::api::{
-    Error as ApiError, RequestBuilderExt as _, ResponseExt as _, Result as ApiResult,
 };
 
 const MAX_NONCE_STORE_CAPACITY: usize = 100;
@@ -102,7 +101,7 @@ impl Client {
     /// # Error
     ///
     /// - [``Error::MissingReplayNonceHeader``]
-    async fn nonce(&self) -> ApiResult<Box<str>> {
+    async fn nonce(&self) -> Result<Box<str>> {
         let value = self.nonce_store.lock().await.pop_front();
 
         if let Some(nonce) = value {
@@ -118,7 +117,7 @@ impl Client {
 
         let headers = response.headers();
 
-        Self::extract_nonce(headers).ok_or(ApiError::MissingReplayNonceHeader)
+        Self::extract_nonce(headers).ok_or(Error::Str("Missing Replay-Nonce header"))
     }
 
     fn extract_nonce(headers: &HeaderMap) -> Option<Box<str>> {
@@ -135,9 +134,8 @@ impl Client {
         key: &Key,
         auth: JwkOrKid<'_>,
         body: T,
-    ) -> ApiResult<Response> {
+    ) -> Result<Response> {
         let mut retrying = self.nonce_retry_policy.state();
-        let mut i = 0_usize;
 
         loop {
             let nonce = self.nonce().await?;
@@ -159,15 +157,15 @@ impl Client {
                 .await;
 
             match maybe_response {
-                Err(ApiError::AcmeError(Problem {
-                    type_: ProblemType::BadNonce,
+                Err(Error::Problem(Problem {
+                    r#type: ProblemType::BadNonce,
                     ..
                 })) => {
-                    i += 1;
-                    println!("Bad nonce. retrying... {i}");
+                    #[cfg(feature = "tracing")]
+                    tracing::warn!("Bad nonce. retrying...");
 
-                    if let ControlFlow::Break(_) = retrying.wait(None).await {
-                        return Err(ApiError::Timeout);
+                    if let ControlFlow::Break(e) = retrying.wait(None).await {
+                        return Err(e);
                     }
                 }
                 response => break response,

@@ -1,6 +1,6 @@
 //! Order Management
 
-use std::ops::ControlFlow;
+use std::{fmt, ops::ControlFlow};
 
 use crate::{
     Error, Problem, Result, RetryPolicy,
@@ -62,28 +62,20 @@ pub enum IdentifierType {
 /// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
 /// [RFC 8555 §7.1.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.3
 /// [RFC 8555 §9.7.7]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Identifier {
-    /// The type of identifier (e.g., `"dns"` for domain names).
-    ///
-    /// Defined in [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7).
-    /// This determines how the identifier should be validated.
-    #[serde(rename = "type")]
-    pub type_: IdentifierType,
-
-    /// The identifier value.
-    ///
-    /// For `dns` identifiers, this is the fully qualified domain name (FQDN)
-    /// to be validated and included in the certificate.
-    pub value: String,
+#[allow(missing_docs)]
+#[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[non_exhaustive]
+#[serde(tag = "type", content = "value", rename_all = "kebab-case")]
+pub enum Identifier {
+    Dns(String),
 }
 
-impl<T: ToString> From<T> for Identifier {
-    fn from(value: T) -> Self {
-        Self {
-            type_: IdentifierType::Dns,
-            value: value.to_string(),
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Dns(v) => write!(f, r#"type: "dns", value: "{v}""#)?,
         }
+        Ok(())
     }
 }
 
@@ -170,7 +162,7 @@ pub struct NewOrder {
 
 impl NewOrder {
     pub fn from_domains(domains: Vec<String>) -> Self {
-        let identifiers: Vec<Identifier> = domains.into_iter().map(Into::into).collect();
+        let identifiers: Vec<Identifier> = domains.into_iter().map(Identifier::Dns).collect();
         Self {
             identifiers,
             not_before: None,
@@ -414,17 +406,20 @@ impl Order {
     /// or HTTP communication is propagated as [`Error`].
     pub async fn finalize(&self, account: &Account) -> Result<X509Req> {
         // TODO: generationg domain key
-        let domain_key =
-            Rsa::generate(4096).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
-        let domain_private_key = PKey::from_rsa(domain_key)
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let domain_key = Rsa::generate(4096).map_err(|_| Error::Crypto("Domain key"))?;
+        let domain_private_key =
+            PKey::from_rsa(domain_key).map_err(|_| Error::Crypto("Domain key"))?;
 
-        let domains: Vec<&str> = self.identifiers.iter().map(|v| v.value.as_str()).collect();
-        let csr = csr::generate_csr(&domain_private_key, &domains)
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
-        let csr_der_bytes = csr
-            .to_der()
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let domains: Vec<&str> = self
+            .identifiers
+            .iter()
+            .map(|v| match v {
+                Identifier::Dns(d) => Ok(d.as_str()),
+                // _ => return Err(Error::Unsupported("Only DNS identifier supported")),
+            })
+            .collect::<Result<Vec<&str>>>()?;
+        let csr = csr::generate_csr(&domain_private_key, &domains)?;
+        let csr_der_bytes = csr.to_der().map_err(|_| Error::Crypto("CSR to der"))?;
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
 
         let url = &self.finalize;

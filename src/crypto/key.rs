@@ -124,8 +124,8 @@ impl Key {
     /// [RFC 7517]: https://datatracker.ietf.org/doc/html/rfc7517
     /// [RFC 7518]: https://datatracker.ietf.org/doc/html/rfc7518
     pub fn new_rsa(bits: RsaKeyBits, signing_algo: RsaSigningAlgorithm) -> Result<Self> {
-        let key = Rsa::generate(bits.as_u32())
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let key =
+            Rsa::generate(bits.as_u32()).map_err(|_| Error::Crypto("Rsa key generation failed"))?;
 
         Ok(Self::Rsa {
             bits,
@@ -209,10 +209,10 @@ impl Key {
     /// [RFC 7518]: https://datatracker.ietf.org/doc/html/rfc7518
     pub fn new_ec(curve: EcCurve) -> Result<Self> {
         let group = EcGroup::from_curve_name(curve.into())
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            .map_err(|_| Error::Crypto("Unsupported Elliptic Curve"))?;
 
         let ec_key =
-            EcKey::generate(&group).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            EcKey::generate(&group).map_err(|_| Error::Crypto("EC key generation failed"))?;
 
         Ok(Self::Ec {
             crv: curve,
@@ -278,7 +278,7 @@ impl Key {
     /// Any error from key generation is propagated as [`Error`].
     pub fn new_okp() -> Result<Self> {
         let pkey =
-            PKey::generate_ed25519().map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            PKey::generate_ed25519().map_err(|_| Error::Crypto("Okp key generation failed"))?;
 
         Ok(Self::Okp {
             key: pkey,
@@ -316,12 +316,12 @@ impl Key {
     /// Any error from PEM parsing or validation is propagated as [`Error`].
     pub fn new_okp_from_pem(pem: &[u8]) -> Result<Self> {
         let pkey = PKey::private_key_from_pem(pem)
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            .map_err(|_| Error::Crypto("Cannot parse pem to Okp key"))?;
 
         println!("{:#?}", pkey.id());
 
         if pkey.id() != Id::ED25519 {
-            return Err(Error::Unimplemented(Box::from("Not an ED25519 key")));
+            return Err(Error::Crypto("Not an ED25519 key"));
         }
 
         Ok(Self::Okp {
@@ -333,10 +333,10 @@ impl Key {
     /// TODO: ???
     fn _new_okp_from_der(der: &[u8]) -> Result<Self> {
         let pkey = PKey::private_key_from_der(der)
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            .map_err(|_| Error::Crypto("Cannot parse der to Okp key"))?;
 
         if pkey.id() != Id::ED25519 {
-            return Err(Error::Unimplemented(Box::from("Not an ED25519 key")));
+            return Err(Error::Crypto("Not an ED25519 key"));
         }
 
         Ok(Self::Okp {
@@ -381,23 +381,23 @@ impl Key {
     pub fn to_pem(&self) -> Result<(String, String)> {
         let pkey = match self {
             Self::Rsa { key, .. } => PKey::from_rsa(key.to_owned())
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?,
+                .map_err(|_| Error::Crypto("Cannot convert Rsa<Private> to PKey"))?,
             Self::Ec { key, .. } => PKey::from_ec_key(key.to_owned())
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?,
+                .map_err(|_| Error::Crypto("Cannot convert Ec<Private> to PKey"))?,
             Self::Okp { key, .. } => key.to_owned(),
         };
 
         let private_pem = pkey
             .private_key_to_pem_pkcs8()
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            .map_err(|_| Error::Crypto("Cannot convert PKey to private_key_to_pem_pkcs8"))?;
         let public_pem = pkey
             .public_key_to_pem()
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            .map_err(|_| Error::Crypto("Cannot convert PKey to pem public_key_to_pem"))?;
 
         let private_key = String::from_utf8(private_pem)
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            .map_err(|_| Error::Crypto("Cannot convert private_pem to string"))?;
         let public_key = String::from_utf8(public_pem)
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            .map_err(|_| Error::Crypto("Cannot convert public_pem to string"))?;
 
         // println!("Private Key:\n{private_key}\n\nPublic Key:\n{public_key}");
         Ok((private_key, public_key))
@@ -437,21 +437,13 @@ impl Key {
     ///
     /// # Recommendation
     /// Consider returning `Vec<u8>` instead of `String` for correct binary handling.
-    pub fn to_pkcs8_der(&self) -> Result<String> {
+    pub fn to_pkcs8_der(&self) -> Result<Vec<u8>> {
         let der = match self {
-            Self::Rsa { key, .. } => key
-                .private_key_to_der()
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?,
-            Self::Ec { key, .. } => key
-                .private_key_to_der()
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?,
-            Self::Okp { key, .. } => key
-                .private_key_to_der()
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?,
+            Self::Rsa { key, .. } => key.private_key_to_der(),
+            Self::Ec { key, .. } => key.private_key_to_der(),
+            Self::Okp { key, .. } => key.private_key_to_der(),
         };
-
-        let der =
-            String::from_utf8(der).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let der = der.map_err(|_| Error::Crypto("Cannot convert PKey to private_key_to_der"))?;
         Ok(der)
     }
 }
@@ -509,9 +501,9 @@ enum JwkRepr {
 
 fn big_num_from_base64(s: &str) -> Result<BigNum> {
     let decoded =
-        b64::b64u_decode(s).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        b64::b64u_decode(s).map_err(|_| Error::Crypto("cannot decode, big_num_from_base64"))?;
 
-    BigNum::from_slice(&decoded).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))
+    BigNum::from_slice(&decoded).map_err(|_| Error::Crypto("Cannot convert base64 to BigNum"))
 }
 
 // ── Serialize ────────────────────────────────────────────────────────────────

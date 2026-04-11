@@ -5,21 +5,13 @@ use crate::{Error, Result, crypto::jwa::Jwa};
 
 pub(crate) fn detect_ec_curve(key: &EcKey<openssl::pkey::Private>) -> Result<EcCurve> {
     let group = key.group();
-    let nid = group
-        .curve_name()
-        .ok_or(Error::Unimplemented(Box::from(String::from(
-            "UnknownCurve",
-        ))))
-        .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+    let nid = group.curve_name().ok_or(Error::Crypto("Unknown Elliptic Curve"))?;
 
     match nid {
         Nid::X9_62_PRIME256V1 => Ok(EcCurve::P256),
         Nid::SECP384R1 => Ok(EcCurve::P384),
         Nid::SECP521R1 => Ok(EcCurve::P521),
-
-        _ => Err(Error::Unimplemented(Box::from(format!(
-            "UnsupportedCurve: {nid:?}"
-        )))),
+        _ => Err(Error::Str("Unsupported Elliptic Curve")),
     }
 }
 
@@ -27,7 +19,7 @@ pub(crate) fn ecdsa_der_to_raw(der: &[u8], crv: EcCurve) -> Result<Vec<u8>> {
     use openssl::ecdsa::EcdsaSig;
 
     let sig =
-        EcdsaSig::from_der(der).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        EcdsaSig::from_der(der).map_err(|_| Error::Crypto("Cannot convert der to EcdsaSig"))?;
 
     let size = match crv {
         EcCurve::P256 => 32,

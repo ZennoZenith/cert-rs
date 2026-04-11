@@ -10,78 +10,14 @@ use reqwest::{RequestBuilder, Response};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, ser::SerializeMap as _};
 use url::Url;
 
-use crate::{CRATE_USER_AGENT, Client, JOSE_JSON, LANGUAGE};
+use crate::{CRATE_USER_AGENT, Client, Error, JOSE_JSON, LANGUAGE, Result, order::Identifier};
 
 const ACME_PREFIX: &str = "urn:ietf:params:acme:error:";
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    /// The HTTP request failed due to a network error, timeout, or other transport-level issue.
-    #[error(transparent)]
-    Reqwest(#[from] reqwest::Error),
-
-    /// The response `Content-Type` header is missing or could not be extracted.
-    #[error("Cannot extract content-type from response")]
-    ContentType,
-
-    /// The `Content-Type` header value could not be parsed as a MIME type.
-    #[error(transparent)]
-    MimeFromStr(#[from] mime::FromStrError),
-
-    /// The response MIME type is not an accepted ACME media type.
-    #[error("Invalid Mime: {0}")]
-    InvalidContentType(Mime),
-
-    /// The server returned a well-formed ACME problem document.
-    ///
-    /// See [RFC 8555 §6.7](https://datatracker.ietf.org/doc/html/rfc8555#section-6.7).
-    #[error("{0}")]
-    AcmeError(Problem),
-
-    /// The response body could not be parsed as JSON.
-    #[error("{0}")]
-    JsonParse(Box<str>),
-
-    /// The server returned an ACME error response but the problem document body could not be parsed.
-    #[error("{0}")]
-    AcmeErrorParse(Box<str>),
-
-    /// Nonce replay retries were exhausted without a successful response.
-    ///
-    /// See [RFC 8555 §6.5](https://datatracker.ietf.org/doc/html/rfc8555#section-6.5).
-    #[error("Max Nonce Retry reached. max = {0}")]
-    MaxNonceRetry(usize),
-
-    /// A response header value could not be converted to a UTF-8 string.
-    #[error(transparent)]
-    HeaderToStr(#[from] http::header::ToStrError),
-
-    /// TODO: remove
-    /// The `Location` header is missing from a response that requires it.
-    #[error("Location Header does not exist.")]
-    MissingLocationHeader,
-
-    /// The `Location` header value could not be parsed as a URL.
-    #[error("Cannot parse location header as Url.")]
-    LocationHeaderNotUrl,
-
-    #[error("Cannot parse header: {0}")]
-    HeaderValueParse(&'static str),
-
-    /// The `replay-nonce` header is missing from a response that requires it.
-    #[error("replay-nonce Header does not exist.")]
-    MissingReplayNonceHeader,
-
-    /// TODO:
-    #[error("Timoout")]
-    Timeout,
-}
-
 /// # ACME problem document
 ///
-/// See: [RFC 8555 §6.7](https://datatracker.ietf.org/doc/html/rfc8555#section-6.7)
+/// See: [RFC 8555 §6.7](https://datatracker.ietf.org/doc/html/rfc8555#section-6.7),
+/// [RFC 7807](https://datatracker.ietf.org/doc/html/rfc7807),
 ///
 /// # Example
 ///
@@ -94,15 +30,82 @@ pub enum Error {
 /// ```
 #[derive(Debug, Clone, Serialize, Deserialize, thiserror::Error)]
 pub struct Problem {
-    #[serde(rename = "type")]
-    pub type_: ProblemType,
-    pub detail: Box<str>,
-    pub status: u16,
+    /// One of an enumerated list of problem types
+    ///
+    /// See <https://datatracker.ietf.org/doc/html/rfc8555#section-6.7>
+    pub r#type: ProblemType,
+
+    /// A human-readable explanation of the problem
+    pub detail: Option<Box<str>>,
+
+    /// The HTTP status code returned for this response
+    pub status: Option<u16>,
+
+    /// One or more subproblems associated with specific identifiers
+    ///
+    /// See <https://www.rfc-editor.org/rfc/rfc8555#section-6.7.1>
+    #[serde(default)]
+    pub subproblems: Vec<Subproblem>,
 }
 
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {} (HTTP {})", self.type_, self.detail, self.status)
+        f.write_str("API error")?;
+        if let Some(detail) = &self.detail {
+            write!(f, ": {detail}")?;
+        }
+
+        write!(f, " ({})", self.r#type)?;
+
+        if !self.subproblems.is_empty() {
+            let count = self.subproblems.len();
+            write!(f, ": {count} subproblems: ")?;
+            for (i, subproblem) in self.subproblems.iter().enumerate() {
+                write!(f, "{subproblem}")?;
+                if i != count - 1 {
+                    f.write_str(", ")?;
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    // fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    //     write!(f, "{}: {} (HTTP {})", self.type_, self.detail, self.status)
+    // }
+}
+
+/// An RFC 8555 subproblem document contained within a problem returned by the ACME server
+///
+/// See <https://www.rfc-editor.org/rfc/rfc8555#section-6.7.1>
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Subproblem {
+    /// The identifier associated with this problem
+    pub identifier: Option<Identifier>,
+    /// One of an enumerated list of problem types
+    ///
+    /// See <https://datatracker.ietf.org/doc/html/rfc8555#section-6.7>
+    pub r#type: Option<String>,
+    /// A human-readable explanation of the problem
+    pub detail: Option<String>,
+}
+
+impl fmt::Display for Subproblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(identifier) = &self.identifier {
+            write!(f, r#"for "{identifier}""#)?;
+        }
+
+        if let Some(detail) = &self.detail {
+            write!(f, ": {detail}")?;
+        }
+
+        if let Some(r#type) = &self.r#type {
+            write!(f, " ({type})")?;
+        }
+
+        Ok(())
     }
 }
 
@@ -239,13 +242,13 @@ impl<'de> Deserialize<'de> for ProblemType {
 /// - [``Error::MissingLocationHeader``]
 /// - [``Error::LocationHeaderNotUrl``]
 pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
-    let location_header = headers.get(LOCATION).ok_or(Error::MissingLocationHeader)?;
+    let location_header = headers.get(LOCATION).ok_or(Error::Str("Missing Location header"))?;
 
     location_header
         .to_str()
-        .map_err(|_| Error::LocationHeaderNotUrl)?
+        .map_err(|_| Error::Str("Cannot convert location header to string"))?
         .parse::<Url>()
-        .map_err(|_| Error::LocationHeaderNotUrl)
+        .map_err(|_| Error::Str("Cannot convert location header to Url"))
 }
 
 /// # Error
@@ -253,9 +256,9 @@ pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
 pub fn extract_retry_after(headers: &HeaderMap) -> Result<DateTime<Utc>> {
     let value = headers
         .get(RETRY_AFTER)
-        .ok_or(Error::HeaderValueParse("Retry After header not found"))?
+        .ok_or(Error::Str("Retry After header not found"))?
         .to_str()
-        .map_err(|_| Error::HeaderValueParse("Retry After header cannot be parsed as string"))?
+        .map_err(|_| Error::Str("Retry After header cannot be parsed as string"))?
         .trim();
 
     let now = Utc::now();
@@ -268,14 +271,11 @@ pub fn extract_retry_after(headers: &HeaderMap) -> Result<DateTime<Utc>> {
     // Case 2: `HTTP-date` looks like `Fri, 31 Dec 1999 23:59:59 GMT`
     httpdate::parse_http_date(value)
         .map(Into::into)
-        .map_err(|_| Error::HeaderValueParse("Retry After header cannot be parsed.")) // Case 3: invalid header
+        .map_err(|_| Error::Str("Retry After header cannot be parsed.")) // Case 3: invalid header
 }
 
 async fn parse_acme_error(response: Response) -> Result<Problem> {
-    response
-        .json::<Problem>()
-        .await
-        .map_err(|e| Error::AcmeErrorParse(Box::from(e.to_string())))
+    response.json::<Problem>().await.map_err(Into::into)
 }
 
 pub trait RequestBuilderExt {
@@ -317,17 +317,21 @@ impl ResponseExt for Response {
         }
 
         let Some(content_type) = headers.get(CONTENT_TYPE) else {
-            return Err(Error::ContentType);
+            return Err(Error::Str("Cannot extract content-type from response"));
         };
 
-        let mime: Mime = content_type.to_str()?.parse()?;
+        let mime: Mime = content_type
+            .to_str()
+            .map_err(|_| Error::Str("Cannot convert content-type header to string"))?
+            .parse()
+            .map_err(|_| Error::Str("Cannot convert content-type header to mime type"))?;
 
         if mime.type_() == mime::APPLICATION
             && mime.subtype() == "problem"
             && mime.suffix().is_some_and(|v| v == "json")
         {
-            let acme_error = parse_acme_error(self).await?;
-            return Err(Error::AcmeError(acme_error));
+            let problem = parse_acme_error(self).await?;
+            return Err(Error::Problem(problem));
         }
 
         match (mime.type_(), mime.subtype()) {
@@ -335,7 +339,11 @@ impl ResponseExt for Response {
             (mime::APPLICATION, name) if name.as_str() == "pem-certificate-chain" => (),
             // (mime::TEXT, mime::HTML) => println!("HTML"),
             // (mime::TEXT, mime::PLAIN) => println!("HTML"),
-            _ => return Err(Error::InvalidContentType(mime)),
+            _ => {
+                return Err(Error::Str(
+                    "The response MIME type is not an accepted ACME media type",
+                ));
+            }
         }
 
         // TODO: ???
@@ -454,13 +462,13 @@ mod tests {
 
         let err = parse(json);
 
-        match err.type_ {
+        match err.r#type {
             ProblemType::Malformed => (),
             _ => panic!("expected malformed error"),
         }
 
-        assert_eq!(err.detail, "Request body was invalid".into());
-        assert_eq!(err.status, 400);
+        assert_eq!(err.detail, Some("Request body was invalid".into()));
+        assert_eq!(err.status, Some(400));
     }
 
     #[test]
@@ -475,14 +483,14 @@ mod tests {
 
         let err = parse(json);
 
-        match err.type_ {
+        match err.r#type {
             ProblemType::Unknown(code) => {
                 assert_eq!(code, "someNewError".into());
             }
             _ => panic!("expected unknown error"),
         }
 
-        assert_eq!(err.status, 500);
+        assert_eq!(err.status, Some(500));
     }
 
     #[test]
@@ -497,7 +505,7 @@ mod tests {
 
         let err = parse(json);
 
-        match err.type_ {
+        match err.r#type {
             ProblemType::Malformed => (),
             _ => panic!("expected malformed"),
         }

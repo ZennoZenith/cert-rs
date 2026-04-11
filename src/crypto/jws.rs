@@ -150,18 +150,13 @@ fn sign(key: &Key, msg: &[u8]) -> Result<Vec<u8>> {
 
             // Optimise:
             let keypair = PKey::from_rsa(key.clone())
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from RSA"))?;
 
-            let mut signer = Signer::new(md, &keypair)
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            let mut signer = Signer::new(md, &keypair).map_err(|_| Error::Crypto(""))?;
 
-            signer
-                .update(msg)
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            signer.update(msg).map_err(|_| Error::Crypto("Signing Failed"))?;
 
-            Ok(signer
-                .sign_to_vec()
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?)
+            Ok(signer.sign_to_vec().map_err(|_| Error::Crypto("Signing Failed"))?)
         }
 
         Key::Ec { crv, key } => {
@@ -176,33 +171,28 @@ fn sign(key: &Key, msg: &[u8]) -> Result<Vec<u8>> {
 
             // Optimise:
             let keypair = PKey::from_ec_key(key.clone())
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from EC"))?;
 
-            let mut signer = Signer::new(md, &keypair)
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            let mut signer =
+                Signer::new(md, &keypair).map_err(|_| Error::Crypto("Signing Failed"))?;
 
-            signer
-                .update(msg)
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            signer.update(msg).map_err(|_| Error::Crypto("Signing Failed"))?;
 
-            let der_sig = signer
-                .sign_to_vec()
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+            let der_sig = signer.sign_to_vec().map_err(|_| Error::Crypto("Signing Failed"))?;
 
             // IMPORTANT: convert DER → raw (r || s)
-            Ok(ecdsa_der_to_raw(&der_sig, *crv)
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?)
+            Ok(ecdsa_der_to_raw(&der_sig, *crv).map_err(|_| Error::Crypto("Signing Failed"))?)
         }
 
         Key::Okp { key, .. } => {
             use openssl::sign::Signer;
 
             let mut signer = Signer::new_without_digest(key)
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                .map_err(|_| Error::Crypto("Cannot create PKey<Private> from OKP"))?;
 
             let signature = signer
                 .sign_oneshot_to_vec(msg)
-                .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                .map_err(|_| Error::Crypto("Signing Failed"))?;
 
             Ok(signature)
         }

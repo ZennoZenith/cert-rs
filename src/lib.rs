@@ -31,7 +31,7 @@ pub mod crypto;
 pub mod directory;
 pub mod order;
 
-pub use api::{Error as ApiError, Problem, ProblemType};
+pub use api::{Problem, ProblemType};
 pub use client::Client;
 pub use crypto::{key::Key, kid::Kid};
 pub use directory::{LetsEncrypt, ZeroSsl};

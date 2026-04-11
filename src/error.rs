@@ -1,37 +1,39 @@
 use chrono::{DateTime, Utc};
 
-use crate::{ApiError, account::AccountStatus};
+use crate::{Problem, account::AccountStatus};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
-    /// Wraps an [`ApiError`] returned during HTTP communication with the ACME server.
+    /// The server returned a well-formed ACME problem document.
+    ///
+    /// See [RFC 8555 §6.7](https://datatracker.ietf.org/doc/html/rfc8555#section-6.7).
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Problem(#[from] Problem),
 
-    /// The provided string could not be parsed as a valid URL.
+    /// Failed to parse a URL.
     #[error(transparent)]
     Url(#[from] url::ParseError),
 
-    /// The ACME directory response could not be parsed into the expected structure.
-    #[error("{0}")]
-    DirectoryParse(String),
+    /// Failed to (de)serialize a JSON object
+    #[error("failed to (de)serialize JSON: {0}")]
+    Json(#[from] serde_json::Error),
+
+    /// The HTTP request failed due to a network error, timeout, or other transport-level issue.
+    #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
 
     /// The order does not contain a certificate URL, likely because it has not been finalized yet.
     #[error("Certificate url not present order")]
     CertificateUrlNotPresent,
 
-    /// CSR generation or encoding failed.
-    #[error("{0}")]
-    Csr(String),
-
-    /// A code path that is not yet implemented was reached.
-    #[error("{0}")]
-    Unimplemented(Box<str>),
+    /// Failed from cryptographic operations
+    #[error("Cryptographic operation failed: {0}")]
+    Crypto(&'static str),
 
     /// The account status is not valid for the attempted operation.
-    #[error("{0}")]
+    #[error("Account status no valid. Status: {0}")]
     AccountStatusNoValid(AccountStatus),
 
     /// Key rollover was aborted because an account derived from the provided
@@ -41,16 +43,17 @@ pub enum Error {
     )]
     ExistingAccountDuringKeyRollover,
 
-    #[error("timed out waiting for an order update")]
+    #[error("Timed out: ")]
     Timeout(DateTime<Utc>),
+
+    #[error("ACME server does not support: {0}")]
+    Unsupported(&'static str),
 
     /// Miscellaneous errors
     #[error("Unhandled data: {0}")]
     Str(&'static str),
-}
 
-impl From<reqwest::Error> for Error {
-    fn from(value: reqwest::Error) -> Self {
-        Self::Api(ApiError::from(value))
-    }
+    /// Other kind of error
+    #[error(transparent)]
+    Other(Box<dyn std::error::Error + Send + Sync + 'static>),
 }

@@ -74,9 +74,7 @@ impl TryFrom<VersionedKeyDto> for Key {
 
     fn try_from(dto: VersionedKeyDto) -> Result<Self> {
         if dto.version != 1 {
-            return Err(Error::Unimplemented(
-                format!("Unsupported version: {}", dto.version).into(),
-            ));
+            return Err(Error::Str("Unsupported KeyDto version"));
         }
 
         match dto.key {
@@ -86,7 +84,7 @@ impl TryFrom<VersionedKeyDto> for Key {
                 pem,
             } => {
                 let key = openssl::rsa::Rsa::private_key_from_pem(pem.as_bytes())
-                    .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                    .map_err(|_| Error::Crypto("Cannot parse Rsa private_key_from_pem"))?;
 
                 Ok(Self::Rsa {
                     signing_algo,
@@ -97,14 +95,14 @@ impl TryFrom<VersionedKeyDto> for Key {
 
             KeyDto::Ec { crv, pem } => {
                 let key = openssl::ec::EcKey::private_key_from_pem(pem.as_bytes())
-                    .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                    .map_err(|_| Error::Crypto("Cannot parse Ec private_key_from_pem"))?;
 
                 Ok(Self::Ec { crv, key })
             }
 
             KeyDto::Okp { crv, pem } => {
                 let key = openssl::pkey::PKey::private_key_from_pem(pem.as_bytes())
-                    .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                    .map_err(|_| Error::Crypto("Cannot parse Okp private_key_from_pem"))?;
 
                 Ok(Self::Okp { crv, key })
             }

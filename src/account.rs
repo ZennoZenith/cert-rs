@@ -238,8 +238,7 @@ impl AccountCredentials {
     ///
     /// Any error during JWK conversion is propagated as [`Error`].
     pub fn load_from_parts(directory_url: Url, kid: Kid, key: Key) -> Result<Self> {
-        let jwk =
-            Jwk::try_from(&key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let jwk = Jwk::try_from(&key)?;
 
         Ok(Self {
             directory_url,
@@ -430,7 +429,7 @@ impl Account {
         let client = client.into();
         let url = &client.directory.new_account;
 
-        let jwk = Jwk::try_from(key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let jwk = Jwk::try_from(key)?;
 
         let auth = JwkOrKid::Jwk(jwk.clone());
         let body = new_account;
@@ -439,10 +438,7 @@ impl Account {
 
         let kid: Kid = extract_location_header(response.headers()).map(Into::into)?;
 
-        let account_object = response
-            .json::<AccountObject>()
-            .await
-            .map_err(|_| Error::Unimplemented("Cannot extact account status".into()))?;
+        let account_object = response.json::<AccountObject>().await?;
 
         if account_object.status != AccountStatus::Valid {
             return Err(Error::AccountStatusNoValid(account_object.status));
@@ -497,16 +493,13 @@ impl Account {
 
         let url = &client.directory.new_account;
 
-        let jwk = Jwk::try_from(key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let jwk = Jwk::try_from(key)?;
         let auth = JwkOrKid::Jwk(jwk);
         let body = new_account;
 
         let response = client.post(url, key, auth, body).await?;
 
-        let account_object = response
-            .json::<AccountObject>()
-            .await
-            .map_err(|_| Error::Unimplemented("Cannot extact account status".into()))?;
+        let account_object = response.json::<AccountObject>().await?;
 
         Ok(account_object)
     }
@@ -557,18 +550,14 @@ impl Account {
 
         let url = &self.credentials.kid;
 
-        let jwk = Jwk::try_from(&self.credentials.key)
-            .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let jwk = Jwk::try_from(&self.credentials.key)?;
 
         let auth = JwkOrKid::Kid(&self.credentials.kid);
         let body = update_account;
 
         let response = self.client.post(url, &self.credentials.key, auth, body).await?;
 
-        let intermediate_account = response
-            .json::<IntermidiateAccount>()
-            .await
-            .map_err(|_| Error::Unimplemented("Cannot extact account status".into()))?;
+        let intermediate_account = response.json::<IntermidiateAccount>().await?;
 
         if intermediate_account.status != AccountStatus::Valid {
             return Err(Error::AccountStatusNoValid(intermediate_account.status));
@@ -685,16 +674,14 @@ impl Account {
         let url = &self.client.directory.key_change;
 
         let old_key = &self.credentials.key;
-        let old_jwk =
-            Jwk::try_from(old_key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let old_jwk = Jwk::try_from(old_key)?;
 
         let inner_payload = InnerPayload {
             account: &self.credentials.kid,
             old_jwk,
         };
 
-        let inner_jwk =
-            Jwk::try_from(&new_key).map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+        let inner_jwk = Jwk::try_from(&new_key)?;
         let inner_auth = JwkOrKid::Jwk(inner_jwk);
 
         let inner_jws_header = JwsProtectedHeaders::new(&new_key, url, inner_auth, None);
@@ -706,19 +693,19 @@ impl Account {
             Ok(v) => match v.status() {
                 StatusCode::OK => Self::fetch(self.client.clone(), &new_key).await,
                 StatusCode::CONFLICT => Err(Error::ExistingAccountDuringKeyRollover),
-                status_code => Err(Error::Unimplemented(Box::from(format!(
-                    "Invalid status code recieved when key rollover: {status_code}",
-                )))),
+                _ => Err(Error::Str(
+                    "Status code other than OK/CONFLICT recieved when key rollover.",
+                )),
             },
             Err(e) => {
-                if let crate::api::Error::AcmeError(acme_error_type) = &e
-                    && let crate::api::ProblemType::Unknown(v) = &acme_error_type.type_
+                if let Error::Problem(problem) = &e
+                    && let crate::api::ProblemType::Unknown(v) = &problem.r#type
                     && v.as_ref() == "conflict"
                 {
                     return Err(Error::ExistingAccountDuringKeyRollover);
                 }
 
-                Err(Error::Api(e))
+                Err(e)
             }
         };
 

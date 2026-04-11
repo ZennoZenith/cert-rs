@@ -191,15 +191,14 @@ impl TryFrom<&Key> for Jwk {
                 let point = key.public_key();
 
                 let mut ctx = BigNumContext::new()
-                    .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
-                let mut x =
-                    BigNum::new().map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
-                let mut y =
-                    BigNum::new().map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                    .map_err(|_| Error::Crypto("Cannot create `BigNumContext`"))?;
+                let mut x = BigNum::new().map_err(|_| Error::Crypto("Cannot create `BigNum`"))?;
+
+                let mut y = BigNum::new().map_err(|_| Error::Crypto("Cannot create `BigNum`"))?;
 
                 point
                     .affine_coordinates_gfp(group, &mut x, &mut y, &mut ctx)
-                    .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                    .map_err(|_| Error::Crypto("`affine_coordinates_gfp`"))?;
 
                 let coord_len = ec_coord_len(group);
 
@@ -209,9 +208,8 @@ impl TryFrom<&Key> for Jwk {
                 Ok(Self::Ec { crv: *crv, x, y })
             }
             Key::Okp { key, crv } => {
-                let pub_bytes = key
-                    .raw_public_key()
-                    .map_err(|e| Error::Unimplemented(Box::from(e.to_string())))?;
+                let pub_bytes =
+                    key.raw_public_key().map_err(|_| Error::Crypto("`raw_public_key`"))?;
 
                 let public_key = Box::from(b64::b64u_encode(pub_bytes));
 

@@ -14,19 +14,19 @@ use crate::{Error, Result};
 /// ```
 pub fn generate_csr(domain_private_key: &PKey<Private>, domains: &[&str]) -> Result<X509Req> {
     // === Build empty subject (equivalent to "-subj /") ===
-    let name_builder = X509NameBuilder::new().map_err(|e| Error::Csr(e.to_string()))?;
+    let name_builder = X509NameBuilder::new().map_err(|_| Error::Crypto("CSR"))?;
     // No fields added → empty subject
     let name = name_builder.build();
 
     // === Build CSR ===
-    let mut req_builder = X509ReqBuilder::new().map_err(|e| Error::Csr(e.to_string()))?;
-    req_builder.set_version(0).map_err(|e| Error::Csr(e.to_string()))?;
+    let mut req_builder = X509ReqBuilder::new().map_err(|_| Error::Crypto("CSR"))?;
+    req_builder.set_version(0).map_err(|_| Error::Crypto("CSR"))?;
     req_builder
         .set_subject_name(&name)
-        .map_err(|e| Error::Csr(e.to_string()))?;
+        .map_err(|_| Error::Crypto("CSR"))?;
     req_builder
         .set_pubkey(domain_private_key)
-        .map_err(|e| Error::Csr(e.to_string()))?;
+        .map_err(|_| Error::Crypto("CSR"))?;
 
     // === Add SAN extension (equivalent to -addext subjectAltName=DNS:... ) ===
     let mut san_ext = SubjectAlternativeName::new();
@@ -36,20 +36,20 @@ pub fn generate_csr(domain_private_key: &PKey<Private>, domains: &[&str]) -> Res
     }
     let san_ext = san_ext
         .build(&req_builder.x509v3_context(None))
-        .map_err(|e| Error::Csr(e.to_string()))?;
+        .map_err(|_| Error::Crypto("CSR"))?;
 
     // CSR extensions must be put into a stack
-    let mut ext_stack = Stack::new().map_err(|e| Error::Csr(e.to_string()))?;
-    ext_stack.push(san_ext).map_err(|e| Error::Csr(e.to_string()))?;
+    let mut ext_stack = Stack::new().map_err(|_| Error::Crypto("CSR"))?;
+    ext_stack.push(san_ext).map_err(|_| Error::Crypto("CSR"))?;
 
     req_builder
         .add_extensions(&ext_stack)
-        .map_err(|e| Error::Csr(e.to_string()))?;
+        .map_err(|_| Error::Crypto("CSR"))?;
 
     // === Sign CSR using SHA256 (equivalent to -sha256) ===
     req_builder
         .sign(domain_private_key, MessageDigest::sha256())
-        .map_err(|e| Error::Csr(e.to_string()))?;
+        .map_err(|_| Error::Crypto("CSR"))?;
 
     let csr: X509Req = req_builder.build();
 

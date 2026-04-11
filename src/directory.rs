@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use url::Url;
 
 use crate::{
-    Error, Result,
+    Result,
     api::{RequestBuilderExt, ResponseExt as _},
 };
 
@@ -69,10 +69,7 @@ impl Directory {
             .handle_response_error()
             .await?;
 
-        response
-            .json()
-            .await
-            .map_err(|e| Error::DirectoryParse(e.to_string()))
+        response.json().await.map_err(Into::into)
     }
 
     /// Fetches and constructs a [Self] from the given ACME directory URL using a default HTTP client.
@@ -97,10 +94,7 @@ impl Directory {
             .handle_response_error()
             .await?;
 
-        response
-            .json()
-            .await
-            .map_err(|e| Error::DirectoryParse(e.to_string()))
+        response.json().await.map_err(Into::into)
     }
 
     /// Constructs a [Self] by deserializing a JSON string.
@@ -117,7 +111,7 @@ impl Directory {
     /// - [``Error::DirectoryParse``] — `directory_json` could not be deserialized into [Self]
     ///
     pub fn new_from_json(directory_json: &str) -> Result<Self> {
-        serde_json::from_str(directory_json).map_err(|e| Error::DirectoryParse(e.to_string()))
+        serde_json::from_str(directory_json).map_err(Into::into)
     }
 
     /// Fetches and constructs a [Self] from the Let's Encrypt production endpoint.

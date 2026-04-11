@@ -14,7 +14,7 @@ use cert_rs::{
     account::{Account, NewAccount},
     authorization::Authorization,
     challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
-    order::{NewOrder, Order, OrderStatus},
+    order::{Identifier, NewOrder, Order, OrderStatus},
 };
 use chrono::Duration;
 use clap::Parser;
@@ -123,7 +123,9 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
         let wildcard = authorization.wildcard.unwrap_or(false);
 
-        let domain = authorization.identifier.value.as_str();
+        let Identifier::Dns(domain) = &authorization.identifier else {
+            panic!("Only dns identifier supported.")
+        };
 
         let Some((base, token)) = authorization.challenges.iter().find_map(|v| match v {
             Challenge::Known(KnownChallenge::Http01(Http01Challenge { base, token }))
