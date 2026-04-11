@@ -1,8 +1,6 @@
 # TODO
 
-- Use &JwkOrKid
 - Check if std::time::Duration is possible instead of chrono
-- use &str where instead of Box<str> where ever possible
 - Profiles Meta: Is defined in later rfc
 - tracing support
 - [Your client should offer a runtime option to specify a list of trusted root CAs.](https://github.com/letsencrypt/pebble?tab=readme-ov-file#avoiding-client-https-errors)

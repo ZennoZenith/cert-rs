@@ -26,6 +26,7 @@ mod time;
 
 pub mod account;
 pub mod authorization;
+pub mod certificate;
 pub mod challenge;
 pub mod crypto;
 pub mod directory;
