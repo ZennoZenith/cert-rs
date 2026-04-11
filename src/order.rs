@@ -1,6 +1,6 @@
 //! Order Management
 
-use std::{fmt, ops::ControlFlow};
+use std::{fmt, net::IpAddr, ops::ControlFlow};
 
 use crate::{
     Error, Key, Problem, Result, RetryPolicy,
@@ -14,26 +14,26 @@ use openssl::x509::X509Req;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-/// [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7)
-#[derive(
-    Debug,
-    Clone,
-    Copy,
-    Deserialize,
-    Serialize,
-    Default,
-    strum_macros::Display,
-    strum_macros::EnumString,
-    strum_macros::IntoStaticStr,
-    PartialEq,
-    Eq,
-)]
-#[strum(ascii_case_insensitive)]
-pub enum IdentifierType {
-    #[default]
-    #[serde(rename = "dns")]
-    Dns,
-}
+// /// [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7)
+// #[derive(
+//     Debug,
+//     Clone,
+//     Copy,
+//     Deserialize,
+//     Serialize,
+//     Default,
+//     strum_macros::Display,
+//     strum_macros::EnumString,
+//     strum_macros::IntoStaticStr,
+//     PartialEq,
+//     Eq,
+// )]
+// #[strum(ascii_case_insensitive)]
+// pub enum IdentifierType {
+//     #[default]
+//     #[serde(rename = "dns")]
+//     Dns,
+// }
 
 /// An ACME identifier object describing the entity for which a certificate
 /// is requested.
@@ -60,18 +60,25 @@ pub enum IdentifierType {
 /// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
 /// [RFC 8555 §7.1.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.1.3
 /// [RFC 8555 §9.7.7]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7
+/// [RFC 8738 §3]: https://datatracker.ietf.org/doc/html/rfc8738#section-3
 #[allow(missing_docs)]
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[non_exhaustive]
 #[serde(tag = "type", content = "value", rename_all = "kebab-case")]
 pub enum Identifier {
     Dns(String),
+
+    /// Note that not all ACME servers will accept an order with an IP address identifier.
+    ///
+    /// Defined in [RFC 8738 §3](https://datatracker.ietf.org/doc/html/rfc8738#section-3)
+    Ip(IpAddr),
 }
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Dns(v) => write!(f, r#"type: "dns", value: "{v}""#)?,
+            Self::Ip(v) => write!(f, r#"type: "ip", value: "{v}""#)?,
         }
         Ok(())
     }
@@ -161,6 +168,15 @@ pub struct NewOrder {
 impl NewOrder {
     pub fn from_domains(domains: Vec<String>) -> Self {
         let identifiers: Vec<Identifier> = domains.into_iter().map(Identifier::Dns).collect();
+        Self {
+            identifiers,
+            not_before: None,
+            not_after: None,
+        }
+    }
+
+    pub fn from_ips(ips: Vec<IpAddr>) -> Self {
+        let identifiers: Vec<Identifier> = ips.into_iter().map(Identifier::Ip).collect();
         Self {
             identifiers,
             not_before: None,
@@ -412,15 +428,20 @@ impl Order {
             csr: String,
         }
 
-        let domains: Vec<&str> = self
+        let identifier_values = self
             .identifiers
             .iter()
             .map(|v| match v {
-                Identifier::Dns(d) => Ok(d.as_str()),
+                Identifier::Dns(d) => Ok(d.clone()),
+                // TODO:
+                Identifier::Ip(ip) => Ok(ip.to_string()),
+                // Identifier::Ip(_) => unimplemented!("Only DNS identifier supported"),
+                //
                 // _ => return Err(Error::Unsupported("Only DNS identifier supported")),
             })
-            .collect::<Result<Vec<&str>>>()?;
-        let csr = csr::generate_csr(domain_key, &domains)?;
+            .collect::<Result<Vec<String>>>()?;
+
+        let csr = csr::generate_csr(domain_key, &identifier_values)?;
         let csr_der_bytes = csr.to_der().map_err(|_| Error::Crypto("CSR to der"))?;
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
 

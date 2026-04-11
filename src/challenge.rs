@@ -106,7 +106,7 @@ pub struct Dns01Challenge {
     pub token: Box<str>,
 }
 
-/// TODO: Not defined in rfc 8555
+/// `TlsAlpn01` Challenge. Defined in [RFC 8737](https://datatracker.ietf.org/doc/html/rfc8737)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TlsAlpn01Challenge {
     #[serde(flatten)]

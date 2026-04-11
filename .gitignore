@@ -3,5 +3,4 @@
 target/
 Cargo.lock
 /temp*
-/pebble*
-./SCRATCHPAD.md
+SCRATCHPAD.md

@@ -29,7 +29,7 @@ fn domain_key_to_pkey(key: &Key) -> Result<PKey<Private>> {
 /// ## subjectAltName = DNS:yoursite.com, DNS:www.yoursite.com
 /// openssl req -new -sha256 -key $domain_private_key_file -subj "/" -addext $subject_alt_name
 /// ```
-pub fn generate_csr(domain_key: &Key, domains: &[&str]) -> Result<X509Req> {
+pub fn generate_csr(domain_key: &Key, domains: &[String]) -> Result<X509Req> {
     // ── Build empty subject (equivalent to "-subj /") ────────────────────────
     let name_builder = X509NameBuilder::new().map_err(|_| Error::Crypto("CSR"))?;
     // No fields added → empty subject
@@ -106,7 +106,7 @@ mod tests {
         let key = Rsa::<Private>::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM).unwrap();
         let domain_private_key = Key::new_rsa_from_parts(key, RsaSigningAlgorithm::RS256).unwrap();
 
-        let domains = ["test.com", "*.test.com"];
+        let domains = ["test.com".to_string(), "*.test.com".to_string()];
 
         let csr = generate_csr(&domain_private_key, &domains).expect("Unable to generate csr");
 
@@ -124,7 +124,7 @@ mod tests {
         let key = Rsa::<Private>::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM).unwrap();
         let domain_private_key = Key::new_rsa_from_parts(key, RsaSigningAlgorithm::RS256).unwrap();
 
-        let domains = ["test.com", "*.test.com"];
+        let domains = ["test.com".to_string(), "*.test.com".to_string()];
 
         #[allow(clippy::expect_used)]
         let csr = generate_csr(&domain_private_key, &domains).expect("Unable to generate csr");

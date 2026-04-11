@@ -10,6 +10,8 @@
 // #![allow(dead_code)] // FIX: For exploratory dev.
 #![allow(unused)] // FIX: For exploratory dev.
 
+use std::net::IpAddr;
+
 use cert_rs::{
     Client, Error, Key, LetsEncrypt, RetryPolicy,
     account::{Account, NewAccount},
@@ -110,9 +112,12 @@ async fn main() -> color_eyre::eyre::Result<()> {
     // account.deactivate().await?;
     // let account = Account::load(arc_client.clone(), account_cred);
 
-    let domains: Vec<String> =
-        vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];
-    let new_order = NewOrder::from_domains(domains);
+    // let domains: Vec<String> =
+    //     vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];
+    // let new_order = NewOrder::from_domains(domains);
+
+    let ips: Vec<IpAddr> = vec![IpAddr::from([127, 0, 0, 1])];
+    let new_order = NewOrder::from_ips(ips);
 
     let (order_url, _order) = Order::create(&account, new_order).await?;
 
@@ -124,21 +129,23 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
         let wildcard = authorization.wildcard.unwrap_or(false);
 
-        let Identifier::Dns(domain) = &authorization.identifier else {
-            panic!("Only dns identifier supported.")
+        let identifier_value = match &authorization.identifier {
+            Identifier::Dns(v) => v.to_owned(),
+            Identifier::Ip(ip_addr) => ip_addr.to_string(),
+            v => panic!("{v} identifier not supported."),
         };
 
         let Some((base, token)) = authorization.challenges.iter().find_map(|v| match v {
-            // Challenge::Known(KnownChallenge::Http01(Http01Challenge { base, token }))
-            //     if !wildcard =>
-            // {
-            //     Some((base, token))
-            // }
-            Challenge::Known(KnownChallenge::TlsAlpn01(TlsAlpn01Challenge { base, token }))
+            Challenge::Known(KnownChallenge::Http01(Http01Challenge { base, token }))
                 if !wildcard =>
             {
                 Some((base, token))
             }
+            // Challenge::Known(KnownChallenge::TlsAlpn01(TlsAlpn01Challenge { base, token }))
+            //     if !wildcard =>
+            // {
+            //     Some((base, token))
+            // }
             Challenge::Known(KnownChallenge::Dns01(Dns01Challenge { base, token })) if wildcard => {
                 Some((base, token))
             }
@@ -154,10 +161,10 @@ async fn main() -> color_eyre::eyre::Result<()> {
         let sha_256_keyauth = Authorization::gen_sha_256_keyauth(&account, token);
         let keyauth = Authorization::gen_keyauth(&account, token);
         if wildcard {
-            handle_dns_01_challenge(domain, &sha_256_keyauth).await?;
+            handle_dns_01_challenge(&identifier_value, &sha_256_keyauth).await?;
         } else {
-            // handle_http_01_challenge(token, &keyauth).await?;
-            handle_tls_alpn_01_challenge(domain, &keyauth).await?;
+            handle_http_01_challenge(token, &keyauth).await?;
+            // handle_tls_alpn_01_challenge(&identifier_value, &keyauth).await?;
         }
 
         challenge_urls.push(challenge_url);
