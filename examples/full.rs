@@ -8,12 +8,13 @@
 #![warn(clippy::perf)]
 #![allow(clippy::multiple_crate_versions)] // FIX:
 // #![allow(dead_code)] // FIX: For exploratory dev.
+#![allow(unused)] // FIX: For exploratory dev.
 
 use cert_rs::{
     Client, Error, Key, LetsEncrypt, RetryPolicy,
     account::{Account, NewAccount},
     authorization::Authorization,
-    challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge},
+    challenge::{Challenge, Dns01Challenge, Http01Challenge, KnownChallenge, TlsAlpn01Challenge},
     order::{Identifier, NewOrder, Order, OrderStatus},
 };
 use chrono::Duration;
@@ -128,7 +129,12 @@ async fn main() -> color_eyre::eyre::Result<()> {
         };
 
         let Some((base, token)) = authorization.challenges.iter().find_map(|v| match v {
-            Challenge::Known(KnownChallenge::Http01(Http01Challenge { base, token }))
+            // Challenge::Known(KnownChallenge::Http01(Http01Challenge { base, token }))
+            //     if !wildcard =>
+            // {
+            //     Some((base, token))
+            // }
+            Challenge::Known(KnownChallenge::TlsAlpn01(TlsAlpn01Challenge { base, token }))
                 if !wildcard =>
             {
                 Some((base, token))
@@ -145,12 +151,13 @@ async fn main() -> color_eyre::eyre::Result<()> {
         };
         let challenge_url = base.url.clone();
 
+        let sha_256_keyauth = Authorization::gen_sha_256_keyauth(&account, token);
+        let keyauth = Authorization::gen_keyauth(&account, token);
         if wildcard {
-            let sha_256_keyauth = Authorization::gen_sha_256_keyauth(&account, token);
             handle_dns_01_challenge(domain, &sha_256_keyauth).await?;
         } else {
-            let keyauth = Authorization::gen_keyauth(&account, token);
-            handle_http_01_challenge(token, &keyauth).await?;
+            // handle_http_01_challenge(token, &keyauth).await?;
+            handle_tls_alpn_01_challenge(domain, &keyauth).await?;
         }
 
         challenge_urls.push(challenge_url);
@@ -279,6 +286,47 @@ async fn handle_dns_01_challenge(
         .json(&serde_json::json!({
             "host": host,
             "value": sha_256_keyauth
+        }))
+        .send()
+        .await?;
+    Ok(())
+}
+
+async fn handle_tls_alpn_01_challenge(
+    domain: &str,
+    sha_256_keyauth: &str,
+) -> color_eyre::eyre::Result<()> {
+    let chall_test_srv: Url = std::env::var("TEST_CHALL_TEST_SRV")
+        .unwrap_or_else(|_| String::from("http://localhost:8055"))
+        .parse()?;
+
+    #[allow(clippy::expect_used)]
+    let tls_alpn_01_url = chall_test_srv
+        .join("add-tlsalpn01")
+        .expect("Cannot join url path")
+        .to_string();
+
+    #[allow(clippy::expect_used)]
+    let clear_tls_alpn_01 = chall_test_srv
+        .join("del-tlsalpn01")
+        .expect("Cannot join url path")
+        .to_string();
+
+    // dns_01 challenges
+
+    reqwest::Client::new()
+        .post(&clear_tls_alpn_01)
+        .json(&serde_json::json!({
+            "host": domain
+        }))
+        .send()
+        .await?;
+
+    reqwest::Client::new()
+        .post(&tls_alpn_01_url)
+        .json(&serde_json::json!({
+            "host": domain,
+            "content": sha_256_keyauth
         }))
         .send()
         .await?;

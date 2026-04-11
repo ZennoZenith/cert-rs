@@ -95,7 +95,6 @@ pub struct ChallengeBase {
 pub struct Http01Challenge {
     #[serde(flatten)]
     pub base: ChallengeBase,
-
     pub token: Box<str>,
 }
 
@@ -104,7 +103,6 @@ pub struct Http01Challenge {
 pub struct Dns01Challenge {
     #[serde(flatten)]
     pub base: ChallengeBase,
-
     pub token: Box<str>,
 }
 
@@ -113,8 +111,7 @@ pub struct Dns01Challenge {
 pub struct TlsAlpn01Challenge {
     #[serde(flatten)]
     pub base: ChallengeBase,
-    // TODO:
-    // pub token: Box<str>,
+    pub token: Box<str>,
 }
 
 /// ACME clients must ignore unknown challenge types per the spec.
@@ -133,7 +130,7 @@ pub enum KnownChallenge {
     #[serde(rename = "dns-01")]
     Dns01(Dns01Challenge),
 
-    // TODO: tls-alpn-01 is not defined in RFC 8555
+    /// `TlsAlpn01` Challenge. Defined in [RFC 8737](https://datatracker.ietf.org/doc/html/rfc8737)
     #[serde(rename = "tls-alpn-01")]
     TlsAlpn01(TlsAlpn01Challenge),
 }

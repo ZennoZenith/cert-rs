@@ -61,4 +61,4 @@ pebble:
     PEBBLE_WFE_NONCEREJECT=0 PEBBLE_VA_NOSLEEP=1 pebble -config ./pebble/config.json -dnsserver 127.0.0.1:8053
 
 pebble-challtestsrv:
-    pebble-challtestsrv -defaultIPv6 "" -defaultIPv4 127.0.0.1
+    pebble-challtestsrv -defaultIPv6 "::1" -defaultIPv4 "127.0.0.1"
