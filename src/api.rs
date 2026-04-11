@@ -239,6 +239,7 @@ impl<'de> Deserialize<'de> for ProblemType {
 
 /// # Error
 ///
+/// TODO:
 /// - [``Error::MissingLocationHeader``]
 /// - [``Error::LocationHeaderNotUrl``]
 pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
@@ -252,7 +253,7 @@ pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
 }
 
 /// # Error
-///
+/// TODO:
 pub fn extract_retry_after(headers: &HeaderMap) -> Result<DateTime<Utc>> {
     let value = headers
         .get(RETRY_AFTER)

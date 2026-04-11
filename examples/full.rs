@@ -112,12 +112,12 @@ async fn main() -> color_eyre::eyre::Result<()> {
     // account.deactivate().await?;
     // let account = Account::load(arc_client.clone(), account_cred);
 
-    // let domains: Vec<String> =
-    //     vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];
-    // let new_order = NewOrder::from_domains(domains);
+    let domains: Vec<String> =
+        vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];
+    let new_order = NewOrder::from_domains(domains);
 
-    let ips: Vec<IpAddr> = vec![IpAddr::from([127, 0, 0, 1])];
-    let new_order = NewOrder::from_ips(ips);
+    // let ips: Vec<IpAddr> = vec![IpAddr::from([127, 0, 0, 1])];
+    // let new_order = NewOrder::from_ips(ips);
 
     let (order_url, _order) = Order::create(&account, new_order).await?;
 
@@ -201,7 +201,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     let cert = loop {
         let order = Order::status(&account, &order_url).await?;
-        match order.download_cert(&account).await {
+        match order.poll_certificate(&account, &RetryPolicy::default()).await {
             Ok(cert) => break cert,
             Err(e @ Error::CertificateUrlNotPresent) => {
                 println!("{e}. trying again.");

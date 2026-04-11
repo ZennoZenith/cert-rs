@@ -469,6 +469,13 @@ impl Order {
     /// retrieves the signed certificate chain once the order is marked as
     /// `valid`.
     ///
+    ///
+    /// If the cached order state is in `ready` or `processing` state, this will poll the server
+    /// for the latest state. If the order is still in `processing` state after that, this will
+    /// return `Ok(None)`. If the order is in `valid` state, this will attempt to retrieve
+    /// the certificate from the server and return it as a `String`. If the order contains
+    /// an error or ends up in any state other than `valid` or `processing`, return an error.
+    ///
     /// # ACME Context
     /// In [RFC 8555 §7.4.2], the certificate URL provided in the finalized order
     /// is used to fetch the issued certificate. The request is performed as a
@@ -486,29 +493,30 @@ impl Order {
     ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - The certificate URL is not present in the order (`CertificateUrlNotPresent`).
-    /// - The POST-as-GET request to the certificate endpoint fails (network,
-    ///   TLS, or signing errors).
-    /// - The server responds with a non-success status code.
-    /// - The response body cannot be read as UTF-8 text.
-    /// - The ACME server returns a malformed or empty certificate response.
-    ///
-    /// Any error from the HTTP client or response decoding is propagated.
-    ///
-    /// # Notes
-    /// - The function currently assumes PEM format; DER or alternate formats are
-    ///   not handled yet.
-    /// - Future improvements may include explicit content-type validation and
-    ///   support for alternate certificate representations.
+    /// TODO: error
     ///
     /// [RFC 8555 §7.4.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.4.2
-    pub async fn download_cert(&self, account: &Account) -> Result<String> {
+    pub async fn certificate(&self, account: &Account) -> Result<Option<String>> {
+        if let Some(error) = &self.error {
+            return Err(Error::Problem(error.clone()));
+        } else if self.status == OrderStatus::Processing {
+            return Ok(None);
+        } else if self.status != OrderStatus::Valid {
+            return Err(Error::Str("Order state not `valid`"));
+        }
+
         let Some(url) = &self.certificate else {
             return Err(Error::CertificateUrlNotPresent);
         };
 
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
+        // response "content-type": "application/pem-certificate-chain; charset=utf-8",
+
+        // TODO: The default format of the certificate is application/pem-certificate-
+        // chain [RFC 8555 §7.4.2].
+        //
+        // TODO: The server MAY provide one or more link relation header fields
+        // [RFC8288] with relation "alternate". [RFC 8555 §7.4.2]
         let response = account
             .client
             .post(
@@ -518,16 +526,45 @@ impl Order {
                 &EmptyString,
             )
             .await?;
-        // response "content-type": "application/pem-certificate-chain; charset=utf-8",
-
-        // TODO: The default format of the certificate is application/pem-certificate-
-        // chain [RFC 8555 §7.4.2].
-        //
-        // TODO: The server MAY provide one or more link relation header fields
-        // [RFC8288] with relation "alternate". [RFC 8555 §7.4.2]
 
         let cert = response.text().await?;
 
-        Ok(cert)
+        Ok(Some(cert))
+    }
+
+    /// Poll the certificate with the given [`RetryPolicy`]
+    ///
+    /// Yields the PEM encoded certificate chain for this order if the order state becomes
+    /// `Valid`. The function keeps polling as long as the order state is `Processing`.
+    /// An error is returned immediately: if the order state is `Invalid`, if polling runs
+    /// into a timeout, or if the ACME CA suggest to retry at a later time.
+    ///
+    /// # Errors
+    ///
+    /// TODO:
+    pub async fn poll_certificate(
+        &self,
+        account: &Account,
+        retries: &RetryPolicy,
+    ) -> Result<String> {
+        let mut retrying = retries.state();
+
+        loop {
+            if let Some(error) = &self.error {
+                return Err(Error::Problem(error.clone()));
+            } else if let OrderStatus::Valid | OrderStatus::Invalid = self.status {
+                return self
+                    .certificate(account)
+                    .await?
+                    .ok_or(Error::Str("no certificates received from ACME CA"));
+            }
+
+            // TODO:
+            // let retry_after = extract_retry_after(response.headers())?;
+            //
+            if let ControlFlow::Break(err) = retrying.wait(None).await {
+                return Err(err);
+            }
+        }
     }
 }
