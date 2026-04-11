@@ -15,6 +15,7 @@ use crate::{
     crypto::{
         jwk::{Jwk, JwkOrKid},
         jws::{Jws, JwsProtectedHeaders},
+        key_dto::VersionedKeyDto,
     },
 };
 
@@ -169,9 +170,9 @@ impl Serialize for AccountCredentials {
     {
         let mut state = serializer.serialize_struct("AccountCredentials", 4)?;
 
-        state.serialize_field("directory_url", &self.directory_url)?;
+        state.serialize_field("directoryUrl", &self.directory_url)?;
         state.serialize_field("kid", &self.kid)?;
-        state.serialize_field("key", &self.key)?;
+        state.serialize_field("keyDto", &VersionedKeyDto::from(&self.key))?;
 
         state.end()
     }
@@ -183,17 +184,20 @@ impl<'de> Deserialize<'de> for AccountCredentials {
         D: serde::Deserializer<'de>,
     {
         #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
         struct Helper {
             kid: Kid,
-            key: Key,
+            key_dto: VersionedKeyDto,
             directory_url: Url,
         }
 
         let Helper {
             kid,
-            key,
+            key_dto,
             directory_url,
         } = Helper::deserialize(deserializer)?;
+
+        let key = Key::from(key_dto);
 
         let jwk = Jwk::try_from(&key).map_err(serde::de::Error::custom)?;
 

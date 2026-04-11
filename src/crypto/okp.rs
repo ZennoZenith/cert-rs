@@ -1,6 +1,99 @@
+use pkcs8::{DecodePrivateKey as _, LineEnding};
 use serde::{Deserialize, Serialize};
 
-use crate::crypto::jwa::Jwa;
+use crate::{
+    Error, Result, b64,
+    crypto::{
+        jwa::Jwa,
+        key::{Curve, FromDerPemPkcs8, Signer, ToDerPemPkcs8},
+    },
+};
+
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum OkpKey {
+    Ed25519(ed25519_dalek::SigningKey),
+}
+
+impl OkpKey {
+    #[must_use]
+    pub fn b64_public_key(&self) -> Box<str> {
+        match self {
+            Self::Ed25519(key) => {
+                let verifying_key = key.verifying_key();
+                b64::b64u_encode(verifying_key.to_bytes()).into_boxed_str()
+            }
+        }
+    }
+}
+
+/// TODO:
+impl FromDerPemPkcs8 for OkpKey {
+    fn from_pkcs8_der(der: &[u8]) -> Result<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        let curve = Curve::from_pkcs8_der(der)?;
+
+        if !matches!(curve, Curve::Okp(..)) {
+            // TODO: better message
+            return Err(Error::Crypto("Is not a Okp key."));
+        }
+
+        ed25519_dalek::SigningKey::from_pkcs8_der(der)
+            .map(Self::Ed25519)
+            .map_err(|_| Error::Crypto("Invlaid Okp pkcs8 der."))
+    }
+
+    fn from_pkcs8_pem(pem: &str) -> Result<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        let curve = Curve::from_pkcs8_pem(pem)?;
+
+        if !matches!(curve, Curve::Okp(..)) {
+            // TODO: better message
+            return Err(Error::Crypto("Is not a Okp key."));
+        }
+
+        ed25519_dalek::SigningKey::from_pkcs8_pem(pem)
+            .map(Self::Ed25519)
+            .map_err(|_| Error::Crypto("Invlaid Okp pkcs8 pem."))
+    }
+}
+
+impl ToDerPemPkcs8 for OkpKey {
+    fn to_pkcs8_der(&self) -> crate::Result<Box<[u8]>> {
+        match self {
+            Self::Ed25519(signing_key) => pkcs8::EncodePrivateKey::to_pkcs8_der(signing_key)
+                .map(|v| <std::vec::Vec<u8> as Clone>::clone(&v.to_bytes()).into_boxed_slice())
+                .map_err(|_| Error::Crypto("Cannot convert okp key Ed25519 to pkcs8 der")),
+        }
+    }
+
+    fn to_pkcs8_pem(&self, line_ending: LineEnding) -> crate::Result<Box<str>> {
+        match self {
+            Self::Ed25519(signing_key) => {
+                pkcs8::EncodePrivateKey::to_pkcs8_pem(signing_key, line_ending)
+                    .map(|v| <std::string::String as Clone>::clone(&v).into_boxed_str())
+                    .map_err(|_| Error::Crypto("Cannot convert okp key Ed25519 to pkcs8 pem"))
+            }
+        }
+    }
+}
+
+impl Signer for OkpKey {
+    type Signature = Box<[u8]>;
+
+    fn sign(&self, payload: &[u8]) -> Self::Signature {
+        match self {
+            Self::Ed25519(signing_key) => {
+                use ed25519_dalek::Signer;
+                signing_key.sign(payload).to_vec().into_boxed_slice()
+            }
+        }
+    }
+}
 
 /// Octet Key Pair (OKP) curves used for modern elliptic-curve cryptography.
 ///
@@ -37,7 +130,16 @@ use crate::crypto::jwa::Jwa;
 /// [RFC 8037]: https://datatracker.ietf.org/doc/html/rfc8037
 /// [RFC 7517]: https://datatracker.ietf.org/doc/html/rfc7517
 #[derive(
-    Debug, Default, Copy, Clone, Serialize, Deserialize, strum_macros::Display, PartialEq, Eq,
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Serialize,
+    Deserialize,
+    strum_macros::Display,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
 )]
 #[non_exhaustive]
 pub enum OkpCurve {
@@ -45,6 +147,20 @@ pub enum OkpCurve {
     #[strum(serialize = "Ed25519")]
     #[default]
     Ed25519,
+}
+
+impl From<&OkpKey> for OkpCurve {
+    fn from(value: &OkpKey) -> Self {
+        match value {
+            OkpKey::Ed25519(_) => Self::Ed25519,
+        }
+    }
+}
+
+impl From<OkpKey> for OkpCurve {
+    fn from(value: OkpKey) -> Self {
+        Self::from(&value)
+    }
 }
 
 /// Signing algorithms for Octet Key Pair (OKP) keys.
@@ -86,6 +202,19 @@ impl From<OkpCurve> for OkpSigningAlgorithm {
     fn from(value: OkpCurve) -> Self {
         match value {
             OkpCurve::Ed25519 => Self::EdDSA,
+        }
+    }
+}
+
+impl From<&OkpKey> for OkpSigningAlgorithm {
+    /// | EcCurve       | SigningAlgorithm      |
+    /// | ------------- | --------------------- |
+    /// | P-256         | ES256                 |
+    /// | P-384         | ES384                 |
+    /// | P-521         | ES512                 |
+    fn from(value: &OkpKey) -> Self {
+        match value {
+            OkpKey::Ed25519(_) => Self::EdDSA,
         }
     }
 }

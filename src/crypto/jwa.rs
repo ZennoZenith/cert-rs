@@ -1,6 +1,9 @@
 use serde::Serialize;
 
-use crate::crypto::{ec::EcSigningAlgorithm, okp::OkpSigningAlgorithm, rsa::RsaSigningAlgorithm};
+use crate::{
+    Key,
+    crypto::{ec::EcSigningAlgorithm, okp::OkpSigningAlgorithm, rsa::RsaSigningAlgorithm},
+};
 
 #[allow(dead_code)]
 pub(crate) trait Jwa {
@@ -108,6 +111,16 @@ impl From<EcSigningAlgorithm> for SigningAlgorithm {
 impl From<OkpSigningAlgorithm> for SigningAlgorithm {
     fn from(value: OkpSigningAlgorithm) -> Self {
         Self::Okp(value)
+    }
+}
+
+impl From<&Key> for SigningAlgorithm {
+    fn from(value: &Key) -> Self {
+        match value {
+            Key::Rsa(rsa_key) => RsaSigningAlgorithm::from(rsa_key).into(),
+            Key::Ec(ec_key) => EcSigningAlgorithm::from(ec_key).into(),
+            Key::Okp(okp_key) => OkpSigningAlgorithm::from(okp_key).into(),
+        }
     }
 }
 

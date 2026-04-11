@@ -1,5 +1,9 @@
 # TODO
 
+- Migrate from base64 to base64ct
+- webpki-roots = "0.26" # If you need to verify ACME server certs with webpki roots
+- Move Jwk to JwkInner and crate Jwk with fields inner and thumbprint
+- Generation privte key shoudl be delegate to other crates
 - Check if std::time::Duration is possible instead of chrono
 - Profiles Meta: Is defined in later rfc
 - tracing support

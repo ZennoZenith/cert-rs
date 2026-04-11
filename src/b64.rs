@@ -7,6 +7,7 @@ pub fn b64u_encode(content: impl AsRef<[u8]>) -> String {
     general_purpose::URL_SAFE_NO_PAD.encode(content)
 }
 
+#[allow(dead_code)]
 pub fn b64u_decode(content: impl AsRef<[u8]>) -> Result<Vec<u8>, DecodeError> {
     general_purpose::URL_SAFE_NO_PAD.decode(content)
 }

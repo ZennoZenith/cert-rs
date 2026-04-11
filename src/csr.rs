@@ -1,82 +1,74 @@
-use openssl::{
-    pkey::{PKey, Private},
-    stack::Stack,
-    x509::{X509NameBuilder, X509Req, X509ReqBuilder, extension::SubjectAlternativeName},
-};
-
-use crate::{Error, Key, Result, crypto::jws::key_digest};
-
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-fn domain_key_to_pkey(key: &Key) -> Result<PKey<Private>> {
-    match key {
-        Key::Rsa { key, .. } => PKey::from_rsa(key.clone()),
-        Key::Ec { key, .. } => PKey::from_ec_key(key.clone()),
-        Key::Okp { key, .. } => return Ok(key.clone()),
-    }
-    .map_err(|_| Error::Crypto("domain_key_to_pkey"))
-}
+// fn domain_key_to_pkey(key: &Key) -> Result<PKey<Private>> {
+//     match key {
+//         Key::Rsa { key, .. } => PKey::from_rsa(key.clone()),
+//         Key::Ec { key, .. } => PKey::from_ec_key(key.clone()),
+//         Key::Okp { key, .. } => return Ok(key.clone()),
+//     }
+//     .map_err(|_| Error::Crypto("domain_key_to_pkey"))
+// }
 
-/// Generates a PKCS#10 CSR for the given domains using the provided private key.
-///
-/// The first domain becomes the CN; all domains are added as Subject Alternative
-/// Names (SANs), which is what ACME servers validate against.
-///
-/// TODO: Test
-///
-/// ```sh
-/// $subject_alt_name = "subjectAltName = DNS:test.com, DNS:*.test.com"
-/// ## subjectAltName = DNS:yoursite.com, DNS:www.yoursite.com
-/// openssl req -new -sha256 -key $domain_private_key_file -subj "/" -addext $subject_alt_name
-/// ```
-pub fn generate_csr(domain_key: &Key, domains: &[String]) -> Result<X509Req> {
-    // ── Build empty subject (equivalent to "-subj /") ────────────────────────
-    let name_builder = X509NameBuilder::new().map_err(|_| Error::Crypto("CSR"))?;
-    // No fields added → empty subject
-    let name = name_builder.build();
+// /// Generates a PKCS#10 CSR for the given domains using the provided private key.
+// ///
+// /// The first domain becomes the CN; all domains are added as Subject Alternative
+// /// Names (SANs), which is what ACME servers validate against.
+// ///
+// /// TODO: Test
+// ///
+// /// ```sh
+// /// $subject_alt_name = "subjectAltName = DNS:test.com, DNS:*.test.com"
+// /// ## subjectAltName = DNS:yoursite.com, DNS:www.yoursite.com
+// /// openssl req -new -sha256 -key $domain_private_key_file -subj "/" -addext $subject_alt_name
+// /// ```
+// pub fn generate_csr(domain_key: &Key, domains: &[String]) -> Result<X509Req> {
+//     // ── Build empty subject (equivalent to "-subj /") ────────────────────────
+//     let name_builder = X509NameBuilder::new().map_err(|_| Error::Crypto("CSR"))?;
+//     // No fields added → empty subject
+//     let name = name_builder.build();
 
-    // ── Build CSR ────────────────────────────────────────────────────────────
-    let mut req_builder = X509ReqBuilder::new().map_err(|_| Error::Crypto("CSR"))?;
-    req_builder.set_version(0).map_err(|_| Error::Crypto("CSR"))?;
-    req_builder
-        .set_subject_name(&name)
-        .map_err(|_| Error::Crypto("CSR"))?;
+//     // ── Build CSR ────────────────────────────────────────────────────────────
+//     let mut req_builder = X509ReqBuilder::new().map_err(|_| Error::Crypto("CSR"))?;
+//     req_builder.set_version(0).map_err(|_| Error::Crypto("CSR"))?;
+//     req_builder
+//         .set_subject_name(&name)
+//         .map_err(|_| Error::Crypto("CSR"))?;
 
-    // ── Public key ───────────────────────────────────────────────────────────
-    let pkey = domain_key_to_pkey(domain_key)?;
-    req_builder
-        .set_pubkey(&pkey)
-        .map_err(|_| Error::Crypto("X509Req.set_pubkey"))?;
+//     // ── Public key ───────────────────────────────────────────────────────────
+//     let pkey = domain_key_to_pkey(domain_key)?;
+//     req_builder
+//         .set_pubkey(&pkey)
+//         .map_err(|_| Error::Crypto("X509Req.set_pubkey"))?;
 
-    // ── Add SAN extension (equivalent to -addext subjectAltName=DNS:... ) ────
-    let mut san_ext = SubjectAlternativeName::new();
+//     // ── Add SAN extension (equivalent to -addext subjectAltName=DNS:... ) ────
+//     let mut san_ext = SubjectAlternativeName::new();
 
-    for domain in domains {
-        san_ext.dns(domain);
-    }
-    let san_ext = san_ext
-        .build(&req_builder.x509v3_context(None))
-        .map_err(|_| Error::Crypto("CSR"))?;
+//     for domain in domains {
+//         san_ext.dns(domain);
+//     }
+//     let san_ext = san_ext
+//         .build(&req_builder.x509v3_context(None))
+//         .map_err(|_| Error::Crypto("CSR"))?;
 
-    // CSR extensions must be put into a stack
-    let mut ext_stack = Stack::new().map_err(|_| Error::Crypto("CSR"))?;
-    ext_stack.push(san_ext).map_err(|_| Error::Crypto("CSR"))?;
+//     // CSR extensions must be put into a stack
+//     let mut ext_stack = Stack::new().map_err(|_| Error::Crypto("CSR"))?;
+//     ext_stack.push(san_ext).map_err(|_| Error::Crypto("CSR"))?;
 
-    req_builder
-        .add_extensions(&ext_stack)
-        .map_err(|_| Error::Crypto("CSR"))?;
+//     req_builder
+//         .add_extensions(&ext_stack)
+//         .map_err(|_| Error::Crypto("CSR"))?;
 
-    // ── Sign ─────────────────────────────────────────────────────────────────
-    let digest = key_digest(domain_key);
+//     // ── Sign ─────────────────────────────────────────────────────────────────
+//     let digest = key_digest(domain_key);
 
-    req_builder
-        .sign(&pkey, digest)
-        .map_err(|_| Error::Crypto("CSR signing failed"))?;
+//     req_builder
+//         .sign(&pkey, digest)
+//         .map_err(|_| Error::Crypto("CSR signing failed"))?;
 
-    let csr: X509Req = req_builder.build();
+//     let csr: X509Req = req_builder.build();
 
-    Ok(csr)
-}
+//     Ok(csr)
+// }
 
 // ///```sh
 // ///openssl req -in $csf_file -inform PEM -outform DER
@@ -85,59 +77,126 @@ pub fn generate_csr(domain_key: &Key, domains: &[String]) -> Result<X509Req> {
 //     let der_bytes = csr.to_der()?;
 // }
 
-// region:    --- Tests
-#[cfg(test)]
-mod tests {
-    #![allow(clippy::expect_used, clippy::unwrap_used)]
+// pub fn generate_csr(key: &Key, domains: &[&str]) -> String {
+//     // Build subject CN from first domain
+//     let subject = Name::from_str(&format!("CN={}", domains[0])).unwrap();
 
-    pub type Result<T> = std::result::Result<T, Error>;
-    pub type Error = Box<dyn std::error::Error>; // For tests.
+//     // Build SAN extension
+//     let san = SubjectAltName(
+//         domains
+//             .iter()
+//             .map(|d| GeneralName::DnsName(Ia5String::new(d).unwrap()))
+//             .collect(),
+//     );
 
-    use crate::{b64, crypto::rsa::RsaSigningAlgorithm};
-    use openssl::rsa::Rsa;
+//     match key {
+//         Key::Rsa(rsa_key) => {
+//             use rsa::pkcs1v15::SigningKey;
+//             use rsa::sha2::Sha256;
+//             match rsa.signing_algo {
+//                 RsaSigningAlgorithm::RS256 => {
+//                     let signing_key = SigningKey::<Sha256>::new(self.key.clone());
+//                     rsa::signature::Signer::sign(&signing_key, payload).into()
+//                 }
+//                 RsaSigningAlgorithm::RS384 => {
+//                     let signing_key = SigningKey::<Sha384>::new(self.key.clone());
+//                     rsa::signature::Signer::sign(&signing_key, payload).into()
+//                 }
+//                 RsaSigningAlgorithm::RS512 => {
+//                     let signing_key = SigningKey::<Sha512>::new(self.key.clone());
+//                     rsa::signature::Signer::sign(&signing_key, payload).into()
+//                 }
+//             }
 
-    use super::*;
+//             let signing_key = SigningKey::<Sha256>::new(rsa_key.key.clone());
+//             let mut builder = RequestBuilder::new(subject, &signing_key).unwrap();
+//             builder.add_extension(&san).unwrap();
+//             let csr = builder.build::<rsa::pkcs1v15::Signature>().unwrap();
+//             csr.to_pem(Default::default()).unwrap()
+//         }
+//         Key::Ec(_ec_key) => todo!(),
+//         Key::Okp(_okp_key) => todo!(),
+//     }
+//     // AcmeKey::P256(key) => {
+//     //     let mut builder = RequestBuilder::new(subject, key).unwrap();
+//     //     builder.add_extension(&san).unwrap();
+//     //     let csr = builder.build::<p256::ecdsa::DerSignature>().unwrap();
+//     //     csr.to_pem(Default::default()).unwrap()
+//     // }
+//     // AcmeKey::P384(key) => {
+//     //     let mut builder = RequestBuilder::new(subject, key).unwrap();
+//     //     builder.add_extension(&san).unwrap();
+//     //     let csr = builder.build::<p384::ecdsa::DerSignature>().unwrap();
+//     //     csr.to_pem(Default::default()).unwrap()
+//     // }
+//     // AcmeKey::P521(key) => {
+//     //     let mut builder = RequestBuilder::new(subject, key).unwrap();
+//     //     builder.add_extension(&san).unwrap();
+//     //     let csr = builder.build::<p521::ecdsa::DerSignature>().unwrap();
+//     //     csr.to_pem(Default::default()).unwrap()
+//     // }
+//     // AcmeKey::Ed25519(key) => {
+//     //     let mut builder = RequestBuilder::new(subject, key).unwrap();
+//     //     builder.add_extension(&san).unwrap();
+//     //     let csr = builder.build::<ed25519_dalek::Signature>().unwrap();
+//     //     csr.to_pem(Default::default()).unwrap()
+//     // }
+//     // AcmeKey::RsaKey(key) => {
+//     // }
+// }
 
-    const FIXTURE_DOMAIN_KEY_PEM: &[u8] = include_bytes!("../tests/FIXTURE_DOMAIN_KEY.pem");
-    const FIXTURE_CSR_PEM: &[u8] = include_bytes!("../tests/FIXTURE_CSR.pem");
+// // region:    --- Tests
+// #[cfg(test)]
+// mod tests {
+//     #![allow(clippy::expect_used, clippy::unwrap_used)]
 
-    #[test]
-    fn csr_ok() -> Result<()> {
-        let key = Rsa::<Private>::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM).unwrap();
-        let domain_private_key = Key::new_rsa_from_parts(key, RsaSigningAlgorithm::RS256).unwrap();
+//     pub type Result<T> = std::result::Result<T, Error>;
+//     pub type Error = Box<dyn std::error::Error>; // For tests.
 
-        let domains = ["test.com".to_string(), "*.test.com".to_string()];
+//     use crate::{b64, crypto::rsa::RsaSigningAlgorithm};
 
-        let csr = generate_csr(&domain_private_key, &domains).expect("Unable to generate csr");
+//     use super::*;
 
-        let csr = csr.to_pem()?;
+//     const FIXTURE_DOMAIN_KEY_PEM: &str = include_str!("../tests/FIXTURE_DOMAIN_KEY.pem");
+//     const FIXTURE_CSR_PEM: &[u8] = include_bytes!("../tests/FIXTURE_CSR.pem");
 
-        assert_eq!(csr, FIXTURE_CSR_PEM);
+//     #[test]
+//     fn csr_ok() -> Result<()> {
+//         let domain_private_key =
+//             Key::from_rsa_pkcs8_pem(FIXTURE_DOMAIN_KEY_PEM, RsaSigningAlgorithm::RS256).unwrap();
 
-        Ok(())
-    }
+//         let domains = ["test.com".to_string(), "*.test.com".to_string()];
 
-    #[test]
-    fn csr_base64_encode_ok() -> Result<()> {
-        const FIXTURE_CSR_DER_BASE64: &str = "MIIEdzCCAl8CAQAwADCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAMVToUrl1gkTzexlNCVZT7SqRCTRDR7WlVU5tE_yJGMbw-8QGQQ4dvlAmdVo0aYCfBsrK3lDaQzbYfrxOPdNgvVVlZ0G3gdN-NxnmtCSxm3wgcV3lxRlgMwxuQA62jkCf8rCKCe0jcubxqu0-zaqTlEqgg7b9UOh4jcry-7cPNmj-O_7goWO09VhxL7PBxi2cId2sa1c0eRihPRM1AbNKCZNkCCNXwsUKGLhDyI1Ccidlmfy_1rYkwk6p3toEMsaygwrDJflJjvBDeLrjPs3N0UvzzBoNNoSQbxfbWozfAOB9hkBwm9QN5q6BmAAzUNzYC_sT4nVNgSZ20y36TDeA_LIMIzVIitKcWQzsV7MQ1w39sMeUZfK6UKDk1v6ViGwznz9FSbNJzFEdoWjTJOmGDVaLTEMbHBXyyZ0ajVRPo_04wtjzqGa4PM1oJtyjA-IHeZz3MujIlLY2anbS0f9MpVgWltfZI5vP6orTQ9Fi3gOxRSVPkiwNNJf6ZCuRz4tDhMRA9nrFQFybFdx90ffFNnUiYJhjWTfa8qiTcCbWuT3bAn9HZszbvyiTNsGbEEau8enN4Zr71lgXffxvNsYQzwBtix70ECMqUjO2HycLWKk_C3Mll01uU6vP5pO7SHXrK6X0mDzfuI3cCOQS6_neJmSyO0P4rmxyYxZJkNl-jH5AgMBAAGgMjAwBgkqhkiG9w0BCQ4xIzAhMB8GA1UdEQQYMBaCCHRlc3QuY29tggoqLnRlc3QuY29tMA0GCSqGSIb3DQEBCwUAA4ICAQBQSD4rYWa4XgQedxb-3f4IQe6YAx2umX8J8OtfTw-kd0UtpASu5E5U7ktocEJP8G2ZREvTOVtwhdXsQShsOsVjeO3AHVYICdTCHSrNdstyRLsGbj-2fTzlY-F-GbchLGk4XDpEsJ2RKbySPoIzYskQ1-jQB_0eEs-T5OGXbM7kd62CCSw9fzdiURwTTp-qUccer1YWZpzILwuhrvMFl5Rx7v8JwFdNwIYsQcSVg_2gm4WjvPW7XRrZ6ivArgHyDCx_S0e4N-n385TBolzvvVGQesoQen3jA6BW9Pas9HAAKATZrVyD9QQ7UiVGnPbeUOpJM9fAIifHM8AFMm3DENMk58PggQAYMV1-ICdvEe6uN6ZKxWnlR94SNN1pHlws8l6mvgtPg8LIk8gejYuk-ZLHxzflcXYZeS9DyxXZXHMmW1HforJklByc0P_xIODi55IeRj8WkncjZZMpZzWRA6P7GOcusTZEW8mFLNiOaNZG1ljDaWEfdNMjyI_WmBIpfqArqtZZhAqJkicFNbRcmH2IEMg7Z_esngf1DIbK8z4zX-73IasJGCin38oIyCLEMbi_p70HzkexJYmZxJGfIATTDeSdsLG5JyiuIUaLI3PILepgdFwNMEuiofIv8H5ohdw7meFXGVeTgJ-FESI6SINWlamUt-BXmvyDI_5GwgCVKA";
+//         let csr = generate_csr(&domain_private_key, &domains).expect("Unable to generate csr");
 
-        let key = Rsa::<Private>::private_key_from_pem(FIXTURE_DOMAIN_KEY_PEM).unwrap();
-        let domain_private_key = Key::new_rsa_from_parts(key, RsaSigningAlgorithm::RS256).unwrap();
+//         let csr = csr.to_pem()?;
 
-        let domains = ["test.com".to_string(), "*.test.com".to_string()];
+//         assert_eq!(csr, FIXTURE_CSR_PEM);
 
-        #[allow(clippy::expect_used)]
-        let csr = generate_csr(&domain_private_key, &domains).expect("Unable to generate csr");
+//         Ok(())
+//     }
 
-        let csr_der_bytes = csr.to_der()?;
-        let csr_der_base64 = b64::b64u_encode(csr_der_bytes);
+//     #[test]
+//     fn csr_base64_encode_ok() -> Result<()> {
+//         const FIXTURE_CSR_DER_BASE64: &str = "MIIEdzCCAl8CAQAwADCCAiIwDQYJKoZIhvcNAQEBBQADggIPADCCAgoCggIBAMVToUrl1gkTzexlNCVZT7SqRCTRDR7WlVU5tE_yJGMbw-8QGQQ4dvlAmdVo0aYCfBsrK3lDaQzbYfrxOPdNgvVVlZ0G3gdN-NxnmtCSxm3wgcV3lxRlgMwxuQA62jkCf8rCKCe0jcubxqu0-zaqTlEqgg7b9UOh4jcry-7cPNmj-O_7goWO09VhxL7PBxi2cId2sa1c0eRihPRM1AbNKCZNkCCNXwsUKGLhDyI1Ccidlmfy_1rYkwk6p3toEMsaygwrDJflJjvBDeLrjPs3N0UvzzBoNNoSQbxfbWozfAOB9hkBwm9QN5q6BmAAzUNzYC_sT4nVNgSZ20y36TDeA_LIMIzVIitKcWQzsV7MQ1w39sMeUZfK6UKDk1v6ViGwznz9FSbNJzFEdoWjTJOmGDVaLTEMbHBXyyZ0ajVRPo_04wtjzqGa4PM1oJtyjA-IHeZz3MujIlLY2anbS0f9MpVgWltfZI5vP6orTQ9Fi3gOxRSVPkiwNNJf6ZCuRz4tDhMRA9nrFQFybFdx90ffFNnUiYJhjWTfa8qiTcCbWuT3bAn9HZszbvyiTNsGbEEau8enN4Zr71lgXffxvNsYQzwBtix70ECMqUjO2HycLWKk_C3Mll01uU6vP5pO7SHXrK6X0mDzfuI3cCOQS6_neJmSyO0P4rmxyYxZJkNl-jH5AgMBAAGgMjAwBgkqhkiG9w0BCQ4xIzAhMB8GA1UdEQQYMBaCCHRlc3QuY29tggoqLnRlc3QuY29tMA0GCSqGSIb3DQEBCwUAA4ICAQBQSD4rYWa4XgQedxb-3f4IQe6YAx2umX8J8OtfTw-kd0UtpASu5E5U7ktocEJP8G2ZREvTOVtwhdXsQShsOsVjeO3AHVYICdTCHSrNdstyRLsGbj-2fTzlY-F-GbchLGk4XDpEsJ2RKbySPoIzYskQ1-jQB_0eEs-T5OGXbM7kd62CCSw9fzdiURwTTp-qUccer1YWZpzILwuhrvMFl5Rx7v8JwFdNwIYsQcSVg_2gm4WjvPW7XRrZ6ivArgHyDCx_S0e4N-n385TBolzvvVGQesoQen3jA6BW9Pas9HAAKATZrVyD9QQ7UiVGnPbeUOpJM9fAIifHM8AFMm3DENMk58PggQAYMV1-ICdvEe6uN6ZKxWnlR94SNN1pHlws8l6mvgtPg8LIk8gejYuk-ZLHxzflcXYZeS9DyxXZXHMmW1HforJklByc0P_xIODi55IeRj8WkncjZZMpZzWRA6P7GOcusTZEW8mFLNiOaNZG1ljDaWEfdNMjyI_WmBIpfqArqtZZhAqJkicFNbRcmH2IEMg7Z_esngf1DIbK8z4zX-73IasJGCin38oIyCLEMbi_p70HzkexJYmZxJGfIATTDeSdsLG5JyiuIUaLI3PILepgdFwNMEuiofIv8H5ohdw7meFXGVeTgJ-FESI6SINWlamUt-BXmvyDI_5GwgCVKA";
 
-        // println!("{}", csr_der_base64);
+//         let domain_private_key =
+//             Key::from_rsa_pkcs8_pem(FIXTURE_DOMAIN_KEY_PEM, RsaSigningAlgorithm::RS256).unwrap();
 
-        assert_eq!(csr_der_base64, FIXTURE_CSR_DER_BASE64);
+//         let domains = ["test.com".to_string(), "*.test.com".to_string()];
 
-        Ok(())
-    }
-}
+//         #[allow(clippy::expect_used)]
+//         let csr = generate_csr(&domain_private_key, &domains).expect("Unable to generate csr");
 
-// endregion: --- Tests
+//         let csr_der_bytes = csr.to_der()?;
+//         let csr_der_base64 = b64::b64u_encode(csr_der_bytes);
+
+//         // println!("{}", csr_der_base64);
+
+//         assert_eq!(csr_der_base64, FIXTURE_CSR_DER_BASE64);
+
+//         Ok(())
+//     }
+// }
+
+// // endregion: --- Tests

@@ -1,20 +1,126 @@
-use openssl::{bn::BigNum, ec::EcGroupRef, nid::Nid};
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
-
-use openssl::{
-    ec::{EcGroup, EcKey},
-    pkey::{Id, PKey, Private},
-    rsa::Rsa,
+use pkcs8::{LineEnding, PrivateKeyInfo, der::Decode as _};
+use rcgen::{
+    CertificateParams, CertificateSigningRequest, DistinguishedName, DnType, KeyPair, SanType,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::{
-    Error, Result, b64,
+    Error, Result,
     crypto::{
-        ec::{EcCurve, detect_ec_curve},
-        okp::OkpCurve,
-        rsa::{RsaKeyBits, RsaSigningAlgorithm},
+        ec::{EcCurve, EcKey},
+        key_dto::VersionedKeyDto,
+        okp::{OkpCurve, OkpKey},
+        rsa::{RsaKey, RsaSigningAlgorithm},
     },
 };
+
+pub trait FromDerPemPkcs8 {
+    /// # Errors
+    ///
+    /// TODO:
+    fn from_pkcs8_der(der: &[u8]) -> crate::Result<Self>
+    where
+        Self: std::marker::Sized;
+
+    /// # Errors
+    ///
+    /// TODO:
+    fn from_pkcs8_pem(pem: &str) -> crate::Result<Self>
+    where
+        Self: std::marker::Sized;
+}
+
+pub trait ToDerPemPkcs8 {
+    /// # Errors
+    ///
+    /// TODO:
+    fn to_pkcs8_der(&self) -> crate::Result<Box<[u8]>>;
+
+    /// # Errors
+    ///
+    /// TODO:
+    fn to_pkcs8_pem(&self, line_ending: LineEnding) -> crate::Result<Box<str>>;
+}
+
+pub(crate) trait Signer {
+    type Signature: AsRef<[u8]>;
+
+    fn sign(&self, payload: &[u8]) -> Self::Signature;
+}
+
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    Serialize,
+    Deserialize,
+    strum_macros::Display,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
+)]
+#[non_exhaustive]
+#[serde(rename_all = "UPPERCASE")]
+/// TODO: can be convert to from already defined ec and okp curve
+pub enum Curve {
+    #[strum(serialize = "RSA")]
+    Rsa,
+
+    #[strum(transparent)]
+    Ec(EcCurve),
+
+    #[strum(transparent)]
+    Okp(OkpCurve),
+}
+
+impl FromDerPemPkcs8 for Curve {
+    fn from_pkcs8_der(der: &[u8]) -> crate::Result<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        let info =
+            PrivateKeyInfo::from_der(der).map_err(|_| Error::Crypto("Cannot parse pkcs8 der"))?;
+        let oid = info.algorithm.oid;
+
+        let curve: Self = match oid.to_string().as_str() {
+            "1.2.840.10045.2.1" => {
+                // EC key — check the named curve parameter
+                let curve_oid = info
+                    .algorithm
+                    .parameters_oid()
+                    .map_err(|_| Error::Crypto("Cannot parse parameters_oid from pkcs8 der"))?;
+                match curve_oid.to_string().as_str() {
+                    "1.2.840.10045.3.1.7" => Self::Ec(EcCurve::P256),
+                    "1.3.132.0.34" => Self::Ec(EcCurve::P384),
+                    "1.3.132.0.35" => Self::Ec(EcCurve::P521),
+                    _ => return Err(Error::Crypto("Unknown EC curve")),
+                }
+            }
+            "1.3.101.112" => Self::Okp(OkpCurve::Ed25519),
+            // "1.3.101.113" => "Ed448",
+            "1.2.840.113549.1.1.1" => Self::Rsa,
+            _ => return Err(Error::Crypto("Unknown curve")),
+        };
+
+        Ok(curve)
+    }
+
+    fn from_pkcs8_pem(pem: &str) -> crate::Result<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        use pkcs8::der::pem::PemLabel;
+
+        let (label, der) = pkcs8::der::pem::decode_vec(pem.as_bytes())
+            .map_err(|_| Error::Crypto("Cannot decode pem"))?;
+
+        if label != PrivateKeyInfo::PEM_LABEL {
+            return Err(Error::Crypto("Not a private key PEM"));
+        }
+
+        Self::from_pkcs8_der(&der)
+    }
+}
 
 /// A cryptographic private key used for ACME / JOSE operations.
 ///
@@ -60,413 +166,304 @@ use crate::{
 #[non_exhaustive]
 pub enum Key {
     /// RSA private key used with RSASSA-PKCS1-v1_5 signing algorithms.
-    Rsa {
-        /// The signing algorithm associated with this RSA key.
-        signing_algo: RsaSigningAlgorithm,
-
-        /// The RSA modulus size (key strength).
-        bits: RsaKeyBits,
-
-        /// The underlying RSA private key material.
-        key: Rsa<Private>,
-    },
+    Rsa(RsaKey),
 
     /// Elliptic Curve (ECDSA) private key over NIST prime curves.
-    Ec {
-        /// The curve used for this EC key (P-256, P-384, P-521).
-        crv: EcCurve,
-
-        /// The underlying EC private key material.
-        key: EcKey<Private>,
-    },
+    Ec(EcKey),
 
     /// Octet Key Pair (OKP) private key (typically Ed25519).
-    Okp {
-        /// The curve type for this OKP key (e.g., Ed25519).
-        crv: OkpCurve,
+    Okp(OkpKey),
+}
 
-        /// The underlying private key material.
-        key: PKey<Private>,
-    },
+impl FromDerPemPkcs8 for Key {
+    /// If Rsa key is provided, default signing algorithm (i.e. [``cert_rs::crypto::rsa::RsaSigningAlgorithm::default()``]) will be choosen.
+    ///
+    /// Use [``Self::from_rsa_pkcs8_der()``] to provide signing algorithm explictly.
+    fn from_pkcs8_der(der: &[u8]) -> crate::Result<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        let curve = Curve::from_pkcs8_der(der)?;
+        match curve {
+            Curve::Rsa => Ok(Self::from(RsaKey::from_pkcs8_der(der)?)),
+            Curve::Ec(_) => Ok(Self::from(EcKey::from_pkcs8_der(der)?)),
+            Curve::Okp(_) => Ok(Self::from(OkpKey::from_pkcs8_der(der)?)),
+        }
+    }
+
+    /// If Rsa key is provided, default signing algorithm (i.e. [``cert_rs::crypto::rsa::RsaSigningAlgorithm::default()``]) will be choosen.
+    ///
+    /// Use [``Self::from_rsa_pkcs8_pem()``] to provide signing algorithm explictly.
+    fn from_pkcs8_pem(pem: &str) -> crate::Result<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        let curve = Curve::from_pkcs8_pem(pem)?;
+        match curve {
+            Curve::Rsa => Ok(Self::from(RsaKey::from_pkcs8_pem(pem)?)),
+            Curve::Ec(_) => Ok(Self::from(EcKey::from_pkcs8_pem(pem)?)),
+            Curve::Okp(_) => Ok(Self::from(OkpKey::from_pkcs8_pem(pem)?)),
+        }
+    }
+}
+
+impl ToDerPemPkcs8 for Key {
+    fn to_pkcs8_der(&self) -> crate::Result<Box<[u8]>> {
+        match self {
+            Self::Rsa(rsa_key) => rsa_key.to_pkcs8_der(),
+            Self::Ec(ec_key) => ec_key.to_pkcs8_der(),
+            Self::Okp(okp_key) => okp_key.to_pkcs8_der(),
+        }
+    }
+
+    fn to_pkcs8_pem(&self, line_ending: LineEnding) -> crate::Result<Box<str>> {
+        match self {
+            Self::Rsa(rsa_key) => rsa_key.to_pkcs8_pem(line_ending),
+            Self::Ec(ec_key) => ec_key.to_pkcs8_pem(line_ending),
+            Self::Okp(okp_key) => okp_key.to_pkcs8_pem(line_ending),
+        }
+    }
+}
+
+impl Signer for Key {
+    type Signature = Box<[u8]>;
+
+    fn sign(&self, payload: &[u8]) -> Self::Signature {
+        match self {
+            Self::Rsa(key) => key.sign(payload),
+            Self::Ec(key) => key.sign(payload),
+            Self::Okp(key) => key.sign(payload),
+        }
+    }
+}
+
+impl From<RsaKey> for Key {
+    fn from(value: RsaKey) -> Self {
+        Self::Rsa(value)
+    }
+}
+
+impl From<EcKey> for Key {
+    fn from(value: EcKey) -> Self {
+        Self::Ec(value)
+    }
+}
+
+impl From<OkpKey> for Key {
+    fn from(value: OkpKey) -> Self {
+        Self::Okp(value)
+    }
 }
 
 impl Key {
-    /// Generates a new RSA private key for ACME / JOSE usage.
-    ///
-    /// This constructor creates a fresh RSA key pair with the specified key size
-    /// and associates it with a signing algorithm used for JWS operations.
-    ///
-    /// # ACME / JOSE Context
-    /// RSA keys are commonly used in ACME for account authentication and CSR
-    /// signing. The key is later represented as a JWK and used in JWS-signed
-    /// requests ([RFC 8555], [RFC 7517], [RFC 7518]).
-    ///
-    /// The selected `signing_algo` determines the `"alg"` field in JWS headers
-    /// (e.g., `"RS256"`).
-    ///
-    /// # Parameters
-    /// - `bits`: The RSA key size (e.g., 2048 or 4096 bits).
-    /// - `signing_algo`: The JWA signing algorithm associated with this key.
-    ///
-    /// # Returns
-    /// A new [`Self::Rsa`] variant containing the generated private key.
-    ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - RSA key generation fails due to cryptographic library failure.
-    /// - The system RNG is unavailable or insufficient for secure key generation.
-    /// - The requested key size is unsupported by the underlying cryptographic backend.
-    ///
-    /// Any error from the underlying RSA generation is propagated as [`Error`].
-    ///
-    /// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
-    /// [RFC 7517]: https://datatracker.ietf.org/doc/html/rfc7517
-    /// [RFC 7518]: https://datatracker.ietf.org/doc/html/rfc7518
-    pub fn new_rsa(bits: RsaKeyBits, signing_algo: RsaSigningAlgorithm) -> Result<Self> {
-        let key =
-            Rsa::generate(bits.as_u32()).map_err(|_| Error::Crypto("Rsa key generation failed"))?;
-
-        Ok(Self::Rsa {
-            bits,
-            signing_algo,
-            key,
-        })
-    }
-
-    /// Constructs an RSA key from existing key material and infers its parameters.
-    ///
-    /// This is used when loading or importing an existing RSA private key rather
-    /// than generating a new one.
-    ///
-    /// # ACME / JOSE Context
-    /// RSA keys used in ACME must be represented as JWKs and are associated with
-    /// a specific signing algorithm (e.g., RS256). This constructor attaches the
-    /// required metadata to an existing key so it can be used in JWS signing and
-    /// ACME authentication flows.
-    ///
-    /// The key size (`bits`) is derived from the RSA modulus.
-    ///
-    /// # Parameters
-    /// - `key`: The existing RSA private key material.
-    /// - `signing_algo`: The JWA signing algorithm to associate with this key.
-    ///
-    /// # Returns
-    /// A [`Self::Rsa`] variant wrapping the provided key and inferred metadata.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The RSA modulus size cannot be determined or is invalid.
-    /// - The modulus bit length cannot be converted into a supported [``RsaKeyBits``] variant.
-    /// - The key is malformed or incomplete.
-    /// - An overflow or conversion failure occurs while computing the bit size.
-    ///
-    /// Any error during key inspection or type conversion is propagated as [`Error`].
-    pub fn new_rsa_from_parts(
-        key: Rsa<Private>,
+    /// TODO:
+    pub fn from_rsa_pkcs8_der_with_signing_algo(
+        der: &[u8],
         signing_algo: RsaSigningAlgorithm,
     ) -> Result<Self> {
-        let bits = key.n().num_bits().cast_unsigned().try_into()?;
-
-        Ok(Self::Rsa {
-            bits,
+        Ok(Self::Rsa(RsaKey::from_pkcs8_der_with_signing_algo(
+            der,
             signing_algo,
-            key,
-        })
+        )?))
     }
 
-    /// Generates a new Elliptic Curve (EC) private key for ACME / JOSE usage.
-    ///
-    /// This constructor creates a fresh ECDSA key pair over the specified NIST
-    /// curve and prepares it for use in JWS signing and ACME authentication flows.
-    ///
-    /// # ACME / JOSE Context
-    /// EC keys are widely used in ACME for account authentication and CSR signing.
-    /// In JOSE ([RFC 7517] / [RFC 7518]), EC keys are represented as JWKs and signed
-    /// using ECDSA algorithms such as ES256, ES384, or ES512 depending on the curve.
-    ///
-    /// The selected curve determines both the cryptographic strength and the
-    /// required JWS `"alg"` value.
-    ///
-    /// # Parameters
-    /// - `curve`: The elliptic curve to use (P-256, P-384, or P-521).
-    ///
-    /// # Returns
-    /// A new [`Self::Ec`] variant containing the generated EC private key.
-    ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - The specified curve name is not supported by the underlying cryptographic backend.
-    /// - The EC group cannot be constructed from the given curve.
-    /// - Key generation fails due to system RNG failure or cryptographic backend errors.
-    /// - The underlying OpenSSL operations fail during key generation.
-    ///
-    /// Any error from EC group creation or key generation is propagated as [`Error`].
-    ///
-    /// [RFC 7517]: https://datatracker.ietf.org/doc/html/rfc7517
-    /// [RFC 7518]: https://datatracker.ietf.org/doc/html/rfc7518
-    pub fn new_ec(curve: EcCurve) -> Result<Self> {
-        let group = EcGroup::from_curve_name(curve.into())
-            .map_err(|_| Error::Crypto("Unsupported Elliptic Curve"))?;
-
-        let ec_key =
-            EcKey::generate(&group).map_err(|_| Error::Crypto("EC key generation failed"))?;
-
-        Ok(Self::Ec {
-            crv: curve,
-            key: ec_key,
-        })
+    /// TODO:
+    pub fn from_rsa_pkcs8_pem_with_signing_algo(
+        pem: &str,
+        signing_algo: RsaSigningAlgorithm,
+    ) -> Result<Self> {
+        Ok(Self::Rsa(RsaKey::from_pkcs8_pem_with_signing_algo(
+            pem,
+            signing_algo,
+        )?))
     }
 
-    /// Constructs an Elliptic Curve (EC) key from existing key material and
-    /// infers the associated curve.
-    ///
-    /// This is used when loading or importing an existing EC private key rather
-    /// than generating a new one.
-    ///
-    /// # ACME / JOSE Context
-    /// EC keys used in ACME must be represented as JWKs and include the curve
-    /// identifier (`"crv"`). This constructor inspects the provided key to
-    /// determine the correct curve (e.g., P-256, P-384, P-521) so it can be
-    /// correctly serialized and used in JWS signing.
-    ///
-    /// # Parameters
-    /// - `key`: The existing EC private key material.
-    ///
-    /// # Returns
-    /// A [`Self::Ec`] variant containing the provided key and the detected curve.
-    ///
     /// # Errors
     ///
-    /// Returns an error if:
-    /// - The curve cannot be determined from the provided EC key.
-    /// - The key is malformed or does not correspond to a supported NIST curve.
-    /// - The key uses an unsupported or unrecognized elliptic curve.
-    /// - Internal cryptographic inspection of the key fails.
-    ///
-    /// Any error from curve detection or key inspection is propagated as [`Error`].
-    pub fn new_ec_from_parts(key: EcKey<Private>) -> Result<Self> {
-        let crv = detect_ec_curve(&key)?;
-        Ok(Self::Ec { crv, key })
+    /// TODO:
+    pub fn generate_csr(&self, domains: &[&str]) -> Result<CertificateSigningRequest> {
+        let key_pem = self.to_pkcs8_pem(LineEnding::LF)?;
+        let key_pair = KeyPair::from_pem(key_pem.as_ref())
+            .map_err(|_| Error::Crypto("While generating csr, Cannot generate KeyPair."))?;
+
+        // Build CSR params
+        let mut params =
+            CertificateParams::new(domains.iter().map(ToString::to_string).collect::<Vec<_>>())
+                .map_err(|_| Error::Crypto("While generating csr, Failed to create cert params"))?;
+
+        // Set distinguished name (required by most ACME providers)
+        let mut dn = DistinguishedName::new();
+        dn.push(DnType::CommonName, domains[0]);
+        params.distinguished_name = dn;
+
+        // Add SANs explicitly
+        params.subject_alt_names = domains
+            .iter()
+            .map(|d| {
+                d.to_string()
+                    .try_into()
+                    .map(SanType::DnsName)
+                    .map_err(|_| Error::Crypto("While generating csr, Failed to set SanType"))
+            })
+            .collect::<Result<Vec<SanType>>>()?;
+
+        // Generate the CSR
+        params
+            .serialize_request(&key_pair)
+            .map_err(|_| Error::Crypto("While generating csr, Failed to generate CSR"))
     }
 
-    /// Generates a new Octet Key Pair (OKP) private key for ACME / JOSE usage.
-    ///
-    /// This constructor creates a fresh Ed25519 key pair, which is the only
-    /// currently supported OKP curve in this implementation.
-    ///
-    /// # ACME / JOSE Context
-    /// OKP keys (RFC 8037) are used in JOSE for EdDSA-based signatures.
-    /// In ACME, they provide a modern alternative to RSA and ECDSA keys,
-    /// offering high performance and strong security guarantees.
-    ///
-    /// The generated key is intended for use with the `"EdDSA"` JWS algorithm
-    /// and is represented in JWK format with `"crv": "Ed25519"`.
-    ///
-    /// # Returns
-    /// A new [`Self::Okp`] variant containing an Ed25519 private key.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The underlying cryptographic backend fails to generate an Ed25519 key pair.
-    /// - The system RNG is unavailable or insufficient for secure key generation.
-    /// - The OpenSSL (or equivalent) provider does not support Ed25519.
-    ///
-    /// Any error from key generation is propagated as [`Error`].
-    pub fn new_okp() -> Result<Self> {
-        let pkey =
-            PKey::generate_ed25519().map_err(|_| Error::Crypto("Okp key generation failed"))?;
+    // /// Serializes the key pair into PEM-encoded private and public key strings.
+    // ///
+    // /// This function converts the internal key representation into a pair of
+    // /// PEM-formatted strings suitable for storage, export, or interoperability
+    // /// with external TLS/PKI tooling.
+    // ///
+    // /// # ACME / JOSE Context
+    // /// Although ACME primarily uses JWK (JSON Web Key) format for signing and
+    // /// authentication, PEM encoding is often used for:
+    // /// - Persisting keys on disk
+    // /// - Interfacing with OpenSSL-based tooling
+    // /// - Exporting keys for external certificate workflows
+    // ///
+    // /// The function produces:
+    // /// - A private key in PKCS#8 PEM format
+    // /// - A corresponding public key in PEM `SubjectPublicKeyInfo` format
+    // ///
+    // /// # Returns
+    // /// A tuple containing:
+    // /// - `String`: PEM-encoded private key
+    // /// - `String`: PEM-encoded public key
+    // ///
+    // /// # Errors
+    // ///
+    // /// Returns an error if:
+    // /// - The underlying key cannot be converted into an OpenSSL `PKey` type.
+    // /// - PEM encoding of the private or public key fails.
+    // /// - The key type does not support the required export operations.
+    // /// - UTF-8 conversion of PEM output fails.
+    // /// - The cryptographic backend encounters an internal error during serialization.
+    // ///
+    // /// Any error from key conversion, PEM encoding, or string conversion is
+    // /// propagated as [`Error`].
+    // pub fn to_pem(&self) -> Result<(String, String)> {
+    //     let pkey = match self {
+    //         Self::Rsa { key, .. } => PKey::from_rsa(key.to_owned())
+    //             .map_err(|_| Error::Crypto("Cannot convert Rsa<Private> to PKey"))?,
+    //         Self::Ec { key, .. } => PKey::from_ec_key(key.to_owned())
+    //             .map_err(|_| Error::Crypto("Cannot convert Ec<Private> to PKey"))?,
+    //         Self::Okp { key, .. } => key.to_owned(),
+    //     };
 
-        Ok(Self::Okp {
-            key: pkey,
-            crv: OkpCurve::Ed25519,
-        })
-    }
+    //     let private_pem = pkey
+    //         .private_key_to_pem_pkcs8()
+    //         .map_err(|_| Error::Crypto("Cannot convert PKey to private_key_to_pem_pkcs8"))?;
+    //     let public_pem = pkey
+    //         .public_key_to_pem()
+    //         .map_err(|_| Error::Crypto("Cannot convert PKey to pem public_key_to_pem"))?;
 
-    /// Loads an Octet Key Pair (OKP) private key from PEM-encoded data.
-    ///
-    /// This constructor parses a PEM-formatted private key and validates that
-    /// it is an Ed25519 key suitable for use in JOSE/ACME operations.
-    ///
-    /// # ACME / JOSE Context
-    /// OKP keys (RFC 8037) are used with `EdDSA` signatures in JWS. In ACME,
-    /// Ed25519 is the primary supported OKP curve and must be represented in
-    /// JWK form with `"crv": "Ed25519"`.
-    ///
-    /// This function ensures that only Ed25519 keys are accepted, rejecting
-    /// any other key types.
-    ///
-    /// # Parameters
-    /// - `pem`: PEM-encoded private key bytes.
-    ///
-    /// # Returns
-    /// A [`Self::Okp`] variant containing the parsed Ed25519 private key.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The PEM data cannot be parsed into a valid private key.
-    /// - The key is not an Ed25519 key (`Id::ED25519` check fails).
-    /// - The underlying cryptographic library fails to decode the key.
-    /// - The key format is unsupported or malformed.
-    ///
-    /// Any error from PEM parsing or validation is propagated as [`Error`].
-    pub fn new_okp_from_pem(pem: &[u8]) -> Result<Self> {
-        let pkey = PKey::private_key_from_pem(pem)
-            .map_err(|_| Error::Crypto("Cannot parse pem to Okp key"))?;
+    //     let private_key = String::from_utf8(private_pem)
+    //         .map_err(|_| Error::Crypto("Cannot convert private_pem to string"))?;
+    //     let public_key = String::from_utf8(public_pem)
+    //         .map_err(|_| Error::Crypto("Cannot convert public_pem to string"))?;
 
-        println!("{:#?}", pkey.id());
+    //     // println!("Private Key:\n{private_key}\n\nPublic Key:\n{public_key}");
+    //     Ok((private_key, public_key))
+    // }
 
-        if pkey.id() != Id::ED25519 {
-            return Err(Error::Crypto("Not an ED25519 key"));
-        }
+    // /// Serializes the private key into PKCS#8 DER format and returns it as a `String`.
+    // ///
+    // /// TODO: test
+    // ///
+    // /// This function exports the underlying private key into PKCS#8 DER encoding,
+    // /// which is a binary format commonly used for interoperable key storage.
+    // ///
+    // /// # ACME / JOSE Context
+    // /// While ACME and JOSE primarily operate with JWK (JSON Web Key) representations,
+    // /// PKCS#8 DER is often used for:
+    // /// - Storing private keys in a standardized binary format
+    // /// - Interfacing with cryptographic libraries and tooling
+    // /// - Key import/export between systems that do not use PEM/JWK directly
+    // ///
+    // /// # ⚠️ Important Note
+    // /// PKCS#8 DER is a **binary format**, not UTF-8 text. Converting raw DER bytes
+    // /// into a `String` is generally invalid and may produce malformed data or runtime
+    // /// errors unless the bytes are explicitly encoded (e.g., base64) beforehand.
+    // ///
+    // /// # Returns
+    // /// A `String` containing the DER-encoded key bytes (as implemented in this function).
+    // ///
+    // /// # Errors
+    // ///
+    // /// Returns an error if:
+    // /// - The key cannot be converted into DER format by the underlying crypto backend.
+    // /// - The key type does not support DER serialization.
+    // /// - UTF-8 conversion fails because DER output is not valid UTF-8.
+    // /// - The cryptographic provider encounters an internal failure.
+    // ///
+    // /// Any error from DER serialization or string conversion is propagated as [`Error`].
+    // ///
+    // /// # Recommendation
+    // /// Consider returning `Vec<u8>` instead of `String` for correct binary handling.
+    // pub fn to_pkcs8_der(&self) -> Result<Vec<u8>> {
+    //     let der = match self {
+    //         Self::Rsa { key, .. } => key.private_key_to_der(),
+    //         Self::Ec { key, .. } => key.private_key_to_der(),
+    //         Self::Okp { key, .. } => key.private_key_to_der(),
+    //     };
+    //     let der = der.map_err(|_| Error::Crypto("Cannot convert PKey to private_key_to_der"))?;
+    //     Ok(der)
+    // }
+}
 
-        Ok(Self::Okp {
-            key: pkey,
-            crv: OkpCurve::Ed25519,
-        })
-    }
+// #[must_use]
+// pub(crate) fn big_num_to_b64_padded(n: &BigNum, byte_len: usize) -> Box<str> {
+//     let bytes = n.to_vec();
+//     if bytes.len() >= byte_len {
+//         return b64::b64u_encode(&bytes).into_boxed_str();
+//     }
+//     // Left-pad with zeros to the required field element size
+//     let mut padded = vec![0u8; byte_len - bytes.len()];
+//     padded.extend_from_slice(&bytes);
+//     b64::b64u_encode(&padded).into_boxed_str()
+// }
 
-    /// TODO: ???
-    fn _new_okp_from_der(der: &[u8]) -> Result<Self> {
-        let pkey = PKey::private_key_from_der(der)
-            .map_err(|_| Error::Crypto("Cannot parse der to Okp key"))?;
+// /// Will return `0` if bits cannot be converted to [usize]
+// #[must_use]
+// pub(crate) fn ec_coord_len(group: &EcGroupRef) -> usize {
+//     let bits = group.order_bits();
+//     bits.div_ceil(8).try_into().unwrap_or_default() // ceil(bits / 8)
+// }
 
-        if pkey.id() != Id::ED25519 {
-            return Err(Error::Crypto("Not an ED25519 key"));
-        }
+// fn big_num_from_base64(s: &str) -> Result<BigNum> {
+//     let decoded =
+//         b64::b64u_decode(s).map_err(|_| Error::Crypto("cannot decode, big_num_from_base64"))?;
 
-        Ok(Self::Okp {
-            key: pkey,
-            crv: OkpCurve::Ed25519,
-        })
-    }
+//     BigNum::from_slice(&decoded).map_err(|_| Error::Crypto("Cannot convert base64 to BigNum"))
+// }
 
-    /// Serializes the key pair into PEM-encoded private and public key strings.
-    ///
-    /// This function converts the internal key representation into a pair of
-    /// PEM-formatted strings suitable for storage, export, or interoperability
-    /// with external TLS/PKI tooling.
-    ///
-    /// # ACME / JOSE Context
-    /// Although ACME primarily uses JWK (JSON Web Key) format for signing and
-    /// authentication, PEM encoding is often used for:
-    /// - Persisting keys on disk
-    /// - Interfacing with OpenSSL-based tooling
-    /// - Exporting keys for external certificate workflows
-    ///
-    /// The function produces:
-    /// - A private key in PKCS#8 PEM format
-    /// - A corresponding public key in PEM `SubjectPublicKeyInfo` format
-    ///
-    /// # Returns
-    /// A tuple containing:
-    /// - `String`: PEM-encoded private key
-    /// - `String`: PEM-encoded public key
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The underlying key cannot be converted into an OpenSSL `PKey` type.
-    /// - PEM encoding of the private or public key fails.
-    /// - The key type does not support the required export operations.
-    /// - UTF-8 conversion of PEM output fails.
-    /// - The cryptographic backend encounters an internal error during serialization.
-    ///
-    /// Any error from key conversion, PEM encoding, or string conversion is
-    /// propagated as [`Error`].
-    pub fn to_pem(&self) -> Result<(String, String)> {
-        let pkey = match self {
-            Self::Rsa { key, .. } => PKey::from_rsa(key.to_owned())
-                .map_err(|_| Error::Crypto("Cannot convert Rsa<Private> to PKey"))?,
-            Self::Ec { key, .. } => PKey::from_ec_key(key.to_owned())
-                .map_err(|_| Error::Crypto("Cannot convert Ec<Private> to PKey"))?,
-            Self::Okp { key, .. } => key.to_owned(),
-        };
+impl From<&VersionedKeyDto> for Key {
+    fn from(_dto: &VersionedKeyDto) -> Self {
+        // if dto.version() != 1 {
+        //     return Err(Error::Str("Unsupported KeyDto version"));
+        // }
 
-        let private_pem = pkey
-            .private_key_to_pem_pkcs8()
-            .map_err(|_| Error::Crypto("Cannot convert PKey to private_key_to_pem_pkcs8"))?;
-        let public_pem = pkey
-            .public_key_to_pem()
-            .map_err(|_| Error::Crypto("Cannot convert PKey to pem public_key_to_pem"))?;
-
-        let private_key = String::from_utf8(private_pem)
-            .map_err(|_| Error::Crypto("Cannot convert private_pem to string"))?;
-        let public_key = String::from_utf8(public_pem)
-            .map_err(|_| Error::Crypto("Cannot convert public_pem to string"))?;
-
-        // println!("Private Key:\n{private_key}\n\nPublic Key:\n{public_key}");
-        Ok((private_key, public_key))
-    }
-
-    /// Serializes the private key into PKCS#8 DER format and returns it as a `String`.
-    ///
-    /// TODO: test
-    ///
-    /// This function exports the underlying private key into PKCS#8 DER encoding,
-    /// which is a binary format commonly used for interoperable key storage.
-    ///
-    /// # ACME / JOSE Context
-    /// While ACME and JOSE primarily operate with JWK (JSON Web Key) representations,
-    /// PKCS#8 DER is often used for:
-    /// - Storing private keys in a standardized binary format
-    /// - Interfacing with cryptographic libraries and tooling
-    /// - Key import/export between systems that do not use PEM/JWK directly
-    ///
-    /// # ⚠️ Important Note
-    /// PKCS#8 DER is a **binary format**, not UTF-8 text. Converting raw DER bytes
-    /// into a `String` is generally invalid and may produce malformed data or runtime
-    /// errors unless the bytes are explicitly encoded (e.g., base64) beforehand.
-    ///
-    /// # Returns
-    /// A `String` containing the DER-encoded key bytes (as implemented in this function).
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The key cannot be converted into DER format by the underlying crypto backend.
-    /// - The key type does not support DER serialization.
-    /// - UTF-8 conversion fails because DER output is not valid UTF-8.
-    /// - The cryptographic provider encounters an internal failure.
-    ///
-    /// Any error from DER serialization or string conversion is propagated as [`Error`].
-    ///
-    /// # Recommendation
-    /// Consider returning `Vec<u8>` instead of `String` for correct binary handling.
-    pub fn to_pkcs8_der(&self) -> Result<Vec<u8>> {
-        let der = match self {
-            Self::Rsa { key, .. } => key.private_key_to_der(),
-            Self::Ec { key, .. } => key.private_key_to_der(),
-            Self::Okp { key, .. } => key.private_key_to_der(),
-        };
-        let der = der.map_err(|_| Error::Crypto("Cannot convert PKey to private_key_to_der"))?;
-        Ok(der)
+        // TODO:
+        unimplemented!()
     }
 }
 
-#[must_use]
-pub(crate) fn big_num_to_b64_padded(n: &BigNum, byte_len: usize) -> Box<str> {
-    let bytes = n.to_vec();
-    if bytes.len() >= byte_len {
-        return b64::b64u_encode(&bytes).into_boxed_str();
+impl From<VersionedKeyDto> for Key {
+    fn from(value: VersionedKeyDto) -> Self {
+        Self::from(&value)
     }
-    // Left-pad with zeros to the required field element size
-    let mut padded = vec![0u8; byte_len - bytes.len()];
-    padded.extend_from_slice(&bytes);
-    b64::b64u_encode(&padded).into_boxed_str()
 }
 
-/// Will return `0` if bits cannot be converted to [usize]
-#[must_use]
-pub(crate) fn ec_coord_len(group: &EcGroupRef) -> usize {
-    let bits = group.order_bits();
-    bits.div_ceil(8).try_into().unwrap_or_default() // ceil(bits / 8)
-}
-
+#[allow(dead_code)]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "kty", rename_all = "UPPERCASE")]
 enum JwkRepr {
@@ -497,191 +494,4 @@ enum JwkRepr {
     /// Octet key pair – Ed25519 / X25519 (OKP)
     #[serde(rename = "OKP")]
     Okp { crv: OkpCurve, x: String, d: String },
-}
-
-fn big_num_from_base64(s: &str) -> Result<BigNum> {
-    let decoded =
-        b64::b64u_decode(s).map_err(|_| Error::Crypto("cannot decode, big_num_from_base64"))?;
-
-    BigNum::from_slice(&decoded).map_err(|_| Error::Crypto("Cannot convert base64 to BigNum"))
-}
-
-// ── Serialize ────────────────────────────────────────────────────────────────
-
-impl Serialize for Key {
-    fn serialize<S: Serializer>(&self, ser: S) -> std::result::Result<S::Ok, S::Error> {
-        #![allow(clippy::many_single_char_names)]
-
-        use serde::ser::Error as _;
-
-        let repr = match self {
-            // ── RSA ──────────────────────────────────────────────────────────
-            Self::Rsa {
-                signing_algo, key, ..
-            } => {
-                let n = key.n();
-                let e = key.e();
-                let d = key.d();
-                let p = key.p().ok_or_else(|| S::Error::custom("missing p"))?;
-                let q = key.q().ok_or_else(|| S::Error::custom("missing q"))?;
-                let dp = key.dmp1().ok_or_else(|| S::Error::custom("missing dp"))?;
-                let dq = key.dmq1().ok_or_else(|| S::Error::custom("missing dq"))?;
-                let qi = key.iqmp().ok_or_else(|| S::Error::custom("missing qi"))?;
-
-                JwkRepr::Rsa {
-                    n: b64::b64u_encode(n.to_vec()),
-                    e: b64::b64u_encode(e.to_vec()),
-                    d: b64::b64u_encode(d.to_vec()),
-                    p: b64::b64u_encode(p.to_vec()),
-                    q: b64::b64u_encode(q.to_vec()),
-                    dp: b64::b64u_encode(dp.to_vec()),
-                    dq: b64::b64u_encode(dq.to_vec()),
-                    qi: b64::b64u_encode(qi.to_vec()),
-                    alg: *signing_algo,
-                }
-            }
-
-            // ── EC ───────────────────────────────────────────────────────────
-            Self::Ec { crv, key } => {
-                let group = key.group();
-                let pubkey = key.public_key();
-                let mut cx = openssl::bn::BigNumContext::new()
-                    .map_err(|e| S::Error::custom(e.to_string()))?;
-                let mut x = BigNum::new().map_err(|e| S::Error::custom(e.to_string()))?;
-                let mut y = BigNum::new().map_err(|e| S::Error::custom(e.to_string()))?;
-
-                pubkey
-                    .affine_coordinates_gfp(group, &mut x, &mut y, &mut cx)
-                    .map_err(|e| S::Error::custom(e.to_string()))?;
-
-                let d = key
-                    .private_key()
-                    .to_owned()
-                    .map_err(|e| S::Error::custom(e.to_string()))?;
-
-                let coord_len = ec_coord_len(group);
-
-                JwkRepr::Ec {
-                    crv: *crv,
-                    x: big_num_to_b64_padded(&x, coord_len).into_string(),
-                    y: big_num_to_b64_padded(&y, coord_len).into_string(),
-                    d: big_num_to_b64_padded(&d, coord_len).into_string(),
-                }
-            }
-
-            // ── OKP (Ed25519 / X25519) ───────────────────────────────────────
-            Self::Okp { crv, key } => {
-                // OpenSSL stores raw key bytes via raw_private_key / raw_public_key
-                let d_bytes = key.raw_private_key().map_err(|e| S::Error::custom(e.to_string()))?;
-                let x_bytes = key.raw_public_key().map_err(|e| S::Error::custom(e.to_string()))?;
-
-                JwkRepr::Okp {
-                    crv: *crv,
-                    x: b64::b64u_encode(&x_bytes),
-                    d: b64::b64u_encode(&d_bytes),
-                }
-            }
-        };
-
-        repr.serialize(ser)
-    }
-}
-
-// ── Deserialize ──────────────────────────────────────────────────────────────
-
-impl<'de> Deserialize<'de> for Key {
-    /// OKP x on deserialize — the public x field is intentionally ignored during
-    /// deserialization because OpenSSL derives it automatically from the raw private
-    /// key bytes, so there's no risk of a mismatch. Key validation — ``EcKey::check_key()``
-    /// is called after reconstruction to verify the point lies on the curve.
-    ///
-    /// RSA consistency is enforced internally by ``Rsa::from_private_components``.
-    ///
-    /// OKP has no equivalent check in OpenSSL's Rust bindings.
-    fn deserialize<D: Deserializer<'de>>(de: D) -> std::result::Result<Self, D::Error> {
-        use openssl::{
-            bn::BigNumContext,
-            ec::{EcGroup, EcKey, EcPoint},
-            pkey::PKey,
-            rsa::Rsa,
-        };
-        use serde::de::Error as _;
-
-        let repr = JwkRepr::deserialize(de)?;
-
-        match repr {
-            // ── RSA ──────────────────────────────────────────────────────────
-            JwkRepr::Rsa {
-                n,
-                e,
-                d,
-                p,
-                q,
-                dp,
-                dq,
-                qi,
-                alg,
-            } => {
-                let key = Rsa::from_private_components(
-                    big_num_from_base64(&n).map_err(D::Error::custom)?,
-                    big_num_from_base64(&e).map_err(D::Error::custom)?,
-                    big_num_from_base64(&d).map_err(D::Error::custom)?,
-                    big_num_from_base64(&p).map_err(D::Error::custom)?,
-                    big_num_from_base64(&q).map_err(D::Error::custom)?,
-                    big_num_from_base64(&dp).map_err(D::Error::custom)?,
-                    big_num_from_base64(&dq).map_err(D::Error::custom)?,
-                    big_num_from_base64(&qi).map_err(D::Error::custom)?,
-                )
-                .map_err(D::Error::custom)?;
-
-                let bits = RsaKeyBits::try_from(key.n().num_bits().cast_unsigned())
-                    .map_err(D::Error::custom)?;
-                let signing_algo = alg;
-
-                Ok(Self::Rsa {
-                    signing_algo,
-                    bits,
-                    key,
-                })
-            }
-
-            // ── EC ───────────────────────────────────────────────────────────
-            JwkRepr::Ec { crv, x, y, d } => {
-                let ec_crv = crv;
-                let nid: Nid = ec_crv.into();
-                let group = EcGroup::from_curve_name(nid).map_err(D::Error::custom)?;
-
-                let x_bn = big_num_from_base64(&x).map_err(D::Error::custom)?;
-                let y_bn = big_num_from_base64(&y).map_err(D::Error::custom)?;
-                let d_bn = big_num_from_base64(&d).map_err(D::Error::custom)?;
-
-                let mut cx = BigNumContext::new().map_err(D::Error::custom)?;
-                let mut point = EcPoint::new(&group).map_err(D::Error::custom)?;
-                point
-                    .set_affine_coordinates_gfp(&group, &x_bn, &y_bn, &mut cx)
-                    .map_err(D::Error::custom)?;
-
-                let key = EcKey::from_private_components(&group, &d_bn, &point)
-                    .map_err(D::Error::custom)?;
-                key.check_key().map_err(D::Error::custom)?;
-
-                Ok(Self::Ec { crv: ec_crv, key })
-            }
-
-            // ── OKP ──────────────────────────────────────────────────────────
-            JwkRepr::Okp { crv, d, .. } => {
-                let okp_crv = crv;
-                let d_bytes = b64::b64u_decode(&d).map_err(D::Error::custom)?;
-
-                let key = match okp_crv {
-                    OkpCurve::Ed25519 => {
-                        PKey::private_key_from_raw_bytes(&d_bytes, openssl::pkey::Id::ED25519)
-                    }
-                }
-                .map_err(D::Error::custom)?;
-
-                Ok(Self::Okp { crv: okp_crv, key })
-            }
-        }
-    }
 }

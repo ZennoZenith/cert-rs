@@ -6,13 +6,14 @@ use crate::{
     Error, Key, Problem, Result, RetryPolicy,
     account::Account,
     api::{EmptyString, extract_location_header, extract_retry_after},
-    b64, csr,
+    b64,
     time::TimeRfc3339,
 };
 
-use openssl::x509::X509Req;
+use rcgen::CertificateSigningRequest;
 use serde::{Deserialize, Serialize};
 use url::Url;
+use x509_parser::nom::AsBytes;
 
 // /// [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7)
 // #[derive(
@@ -422,7 +423,13 @@ impl Order {
     ///
     /// Any error from cryptographic operations, CSR construction, encoding,
     /// or HTTP communication is propagated as [Error].
-    pub async fn finalize(&self, account: &Account, domain_key: &Key) -> Result<X509Req> {
+    #[allow(clippy::unused_async)]
+    pub async fn finalize(
+        &self,
+        account: &Account,
+        domain_key: &Key,
+    ) -> Result<CertificateSigningRequest> {
+        // pub async fn finalize(&self, _account: &Account, _domain_key: &Key) -> Result<X509Req> {
         #[derive(Serialize)]
         pub(crate) struct FinalizeRequest {
             csr: String,
@@ -441,8 +448,11 @@ impl Order {
             })
             .collect::<Result<Vec<String>>>()?;
 
-        let csr = csr::generate_csr(domain_key, &identifier_values)?;
-        let csr_der_bytes = csr.to_der().map_err(|_| Error::Crypto("CSR to der"))?;
+        let identifier_values: Vec<&str> = identifier_values.iter().map(String::as_str).collect();
+
+        let csr = domain_key.generate_csr(&identifier_values)?;
+
+        let csr_der_bytes = csr.der().as_bytes();
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
 
         let body = FinalizeRequest {

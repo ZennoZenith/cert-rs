@@ -1,14 +1,9 @@
-use openssl::bn::{BigNum, BigNumContext};
+use rsa::sha2::{Digest, Sha256};
 use serde::Serialize;
 
 use crate::{
     Error, Key, Result, b64,
-    crypto::{
-        ec::EcCurve,
-        key::{big_num_to_b64_padded, ec_coord_len},
-        kid::Kid,
-        okp::OkpCurve,
-    },
+    crypto::{ec::EcCurve, kid::Kid, okp::OkpCurve},
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -142,8 +137,6 @@ impl Jwk {
     /// [RFC 8555 §8.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-8.1
     #[must_use]
     pub fn thumbprint(&self) -> Box<str> {
-        use openssl::sha::sha256;
-
         let jwk_thumbprint_input = match self {
             Self::Rsa { exponent, modulus } => {
                 format!(r#"{{"e":"{exponent}","kty":"RSA","n":"{modulus}"}}"#)
@@ -158,7 +151,7 @@ impl Jwk {
             }
         };
 
-        let digest = sha256(jwk_thumbprint_input.as_bytes());
+        let digest = Sha256::digest(jwk_thumbprint_input.as_bytes());
 
         b64::b64u_encode(digest).into_boxed_str()
     }
@@ -177,46 +170,23 @@ impl TryFrom<&Key> for Jwk {
 
     fn try_from(value: &Key) -> Result<Self> {
         match value {
-            Key::Rsa { key, .. } => {
-                let n = key.n(); // modulus
-                let e = key.e(); // exponent
-
-                let modulus = Box::from(b64::b64u_encode(n.to_vec()));
-                let exponent = Box::from(b64::b64u_encode(e.to_vec()));
+            Key::Rsa(key) => {
+                let modulus = key.b64_modulus();
+                let exponent = key.b64_exponent();
 
                 Ok(Self::Rsa { exponent, modulus })
             }
-            Key::Ec { crv, key } => {
-                let group = key.group();
-                let point = key.public_key();
+            Key::Ec(key) => {
+                let (x, y) = key.b64_coordinate_x_y()?;
+                let crv = EcCurve::from(key);
 
-                let mut ctx = BigNumContext::new()
-                    .map_err(|_| Error::Crypto("Cannot create `BigNumContext`"))?;
-                let mut x = BigNum::new().map_err(|_| Error::Crypto("Cannot create `BigNum`"))?;
-
-                let mut y = BigNum::new().map_err(|_| Error::Crypto("Cannot create `BigNum`"))?;
-
-                point
-                    .affine_coordinates_gfp(group, &mut x, &mut y, &mut ctx)
-                    .map_err(|_| Error::Crypto("`affine_coordinates_gfp`"))?;
-
-                let coord_len = ec_coord_len(group);
-
-                let x = big_num_to_b64_padded(&x, coord_len);
-                let y = big_num_to_b64_padded(&y, coord_len);
-
-                Ok(Self::Ec { crv: *crv, x, y })
+                Ok(Self::Ec { crv, x, y })
             }
-            Key::Okp { key, crv } => {
-                let pub_bytes =
-                    key.raw_public_key().map_err(|_| Error::Crypto("`raw_public_key`"))?;
+            Key::Okp(key) => {
+                let public_key = key.b64_public_key();
+                let crv = OkpCurve::from(key);
 
-                let public_key = Box::from(b64::b64u_encode(pub_bytes));
-
-                Ok(Self::Okp {
-                    crv: *crv,
-                    public_key,
-                })
+                Ok(Self::Okp { crv, public_key })
             }
         }
     }

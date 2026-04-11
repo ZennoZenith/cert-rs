@@ -56,4 +56,9 @@ pub enum Error {
     /// Other kind of error
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync + 'static>),
+
+    /// Key generation error
+    #[cfg(feature = "generate")]
+    #[error(transparent)]
+    KeyGeneration(Box<dyn std::error::Error + Send + Sync + 'static>),
 }

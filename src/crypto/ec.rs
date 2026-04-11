@@ -1,45 +1,220 @@
-use openssl::{ec::EcKey, nid::Nid};
+use elliptic_curve::sec1::ToEncodedPoint as _;
+use pkcs8::{DecodePrivateKey as _, LineEnding};
 use serde::{Deserialize, Serialize};
 
-use crate::{Error, Result, crypto::jwa::Jwa};
+use crate::{
+    Error, Result, b64,
+    crypto::{
+        jwa::Jwa,
+        key::{Curve, FromDerPemPkcs8, Signer, ToDerPemPkcs8},
+    },
+};
 
-pub(crate) fn detect_ec_curve(key: &EcKey<openssl::pkey::Private>) -> Result<EcCurve> {
-    let group = key.group();
-    let nid = group.curve_name().ok_or(Error::Crypto("Unknown Elliptic Curve"))?;
+#[derive(Debug, Clone)]
+#[non_exhaustive]
+pub enum EcKey {
+    P256(p256::SecretKey),
+    P384(p384::SecretKey),
+    P521(p521::SecretKey),
+}
 
-    match nid {
-        Nid::X9_62_PRIME256V1 => Ok(EcCurve::P256),
-        Nid::SECP384R1 => Ok(EcCurve::P384),
-        Nid::SECP521R1 => Ok(EcCurve::P521),
-        _ => Err(Error::Str("Unsupported Elliptic Curve")),
+impl EcKey {
+    /// # Errors
+    ///
+    /// TODO:
+    pub fn b64_coordinate_x_y(&self) -> Result<(Box<str>, Box<str>)> {
+        match self {
+            Self::P256(key) => {
+                let public = key.public_key();
+                let encoded = public.to_encoded_point(false); // uncompressed
+                let x = b64::b64u_encode(encoded.x().ok_or(Error::Crypto(
+                    "Cannot extract `x` coordinate from Ec P-256 key.",
+                ))?)
+                .into_boxed_str();
+                let y = b64::b64u_encode(encoded.y().ok_or(Error::Crypto(
+                    "Cannot extract `y` coordinate from Ec P-256 key.",
+                ))?)
+                .into_boxed_str();
+
+                Ok((x, y))
+            }
+            Self::P384(key) => {
+                let public = key.public_key();
+                let encoded = public.to_encoded_point(false); // uncompressed
+                let x = b64::b64u_encode(encoded.x().ok_or(Error::Crypto(
+                    "Cannot extract `x` coordinate from Ec P-384 key.",
+                ))?)
+                .into_boxed_str();
+                let y = b64::b64u_encode(encoded.y().ok_or(Error::Crypto(
+                    "Cannot extract `y` coordinate from Ec P-384 key.",
+                ))?)
+                .into_boxed_str();
+
+                Ok((x, y))
+            }
+            Self::P521(key) => {
+                let public = key.public_key();
+                let encoded = public.to_encoded_point(false); // uncompressed
+                let x = b64::b64u_encode(encoded.x().ok_or(Error::Crypto(
+                    "Cannot extract `x` coordinate from Ec P-521 key.",
+                ))?)
+                .into_boxed_str();
+                let y = b64::b64u_encode(encoded.y().ok_or(Error::Crypto(
+                    "Cannot extract `y` coordinate from Ec P-521 key.",
+                ))?)
+                .into_boxed_str();
+
+                Ok((x, y))
+            }
+        }
     }
 }
 
-pub(crate) fn ecdsa_der_to_raw(der: &[u8], crv: EcCurve) -> Result<Vec<u8>> {
-    use openssl::ecdsa::EcdsaSig;
+/// # Errors
+///
+/// TODO:
+///
+/// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
+/// [RFC 7517]: https://datatracker.ietf.org/doc/html/rfc7517
+/// [RFC 7518]: https://datatracker.ietf.org/doc/html/rfc7518
+impl FromDerPemPkcs8 for EcKey {
+    fn from_pkcs8_der(der: &[u8]) -> Result<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        let Curve::Ec(ec_curve) = Curve::from_pkcs8_der(der)? else {
+            // TODO: better message
+            return Err(Error::Crypto("Is not a ec key."));
+        };
 
-    let sig =
-        EcdsaSig::from_der(der).map_err(|_| Error::Crypto("Cannot convert der to EcdsaSig"))?;
-
-    let size = match crv {
-        EcCurve::P256 => 32,
-        EcCurve::P384 => 48,
-        EcCurve::P521 => 66,
-    };
-
-    let mut r = sig.r().to_vec();
-    let mut s = sig.s().to_vec();
-
-    // left-pad with zeros
-    if r.len() < size {
-        r = [vec![0; size - r.len()], r].concat();
+        match ec_curve {
+            EcCurve::P256 => p256::SecretKey::from_pkcs8_der(der)
+                .map(Self::P256)
+                .map_err(|_| Error::Crypto("Invlaid EC P-256 pkcs8 der.")),
+            EcCurve::P384 => p384::SecretKey::from_pkcs8_der(der)
+                .map(Self::P384)
+                .map_err(|_| Error::Crypto("Invlaid EC P-384 pkcs8 der.")),
+            EcCurve::P521 => p521::SecretKey::from_pkcs8_der(der)
+                .map(Self::P521)
+                .map_err(|_| Error::Crypto("Invlaid EC P-521 pkcs8 der.")),
+        }
     }
-    if s.len() < size {
-        s = [vec![0; size - s.len()], s].concat();
-    }
 
-    Ok([r, s].concat())
+    fn from_pkcs8_pem(pem: &str) -> Result<Self>
+    where
+        Self: std::marker::Sized,
+    {
+        let Curve::Ec(ec_curve) = Curve::from_pkcs8_pem(pem)? else {
+            // TODO: better message
+            return Err(Error::Crypto("Is not a ec key."));
+        };
+
+        match ec_curve {
+            EcCurve::P256 => p256::SecretKey::from_pkcs8_pem(pem)
+                .map(Self::P256)
+                .map_err(|_| Error::Crypto("Invlaid EC P-256 pkcs8 pem.")),
+            EcCurve::P384 => p384::SecretKey::from_pkcs8_pem(pem)
+                .map(Self::P384)
+                .map_err(|_| Error::Crypto("Invlaid EC P-384 pkcs8 pem.")),
+            EcCurve::P521 => p521::SecretKey::from_pkcs8_pem(pem)
+                .map(Self::P521)
+                .map_err(|_| Error::Crypto("Invlaid EC P-521 pkcs8 pem.")),
+        }
+    }
 }
+
+impl ToDerPemPkcs8 for EcKey {
+    fn to_pkcs8_der(&self) -> crate::Result<Box<[u8]>> {
+        match self {
+            Self::P256(secret_key) => pkcs8::EncodePrivateKey::to_pkcs8_der(secret_key)
+                .map(|v| <std::vec::Vec<u8> as Clone>::clone(&v.to_bytes()).into_boxed_slice())
+                .map_err(|_| Error::Crypto("Cannot convert ec key P-256 to pkcs8 der")),
+            Self::P384(secret_key) => pkcs8::EncodePrivateKey::to_pkcs8_der(secret_key)
+                .map(|v| <std::vec::Vec<u8> as Clone>::clone(&v.to_bytes()).into_boxed_slice())
+                .map_err(|_| Error::Crypto("Cannot convert ec key P-384 to pkcs8 der")),
+            Self::P521(secret_key) => pkcs8::EncodePrivateKey::to_pkcs8_der(secret_key)
+                .map(|v| <std::vec::Vec<u8> as Clone>::clone(&v.to_bytes()).into_boxed_slice())
+                .map_err(|_| Error::Crypto("Cannot convert ec key P-521 to pkcs8 der")),
+        }
+    }
+
+    fn to_pkcs8_pem(&self, line_ending: LineEnding) -> crate::Result<Box<str>> {
+        match self {
+            Self::P256(secret_key) => {
+                pkcs8::EncodePrivateKey::to_pkcs8_pem(secret_key, line_ending)
+                    .map(|v| <std::string::String as Clone>::clone(&v).into_boxed_str())
+                    .map_err(|_| Error::Crypto("Cannot convert ec P-256 key to pkcs8 pem"))
+            }
+            Self::P384(secret_key) => {
+                pkcs8::EncodePrivateKey::to_pkcs8_pem(secret_key, line_ending)
+                    .map(|v| <std::string::String as Clone>::clone(&v).into_boxed_str())
+                    .map_err(|_| Error::Crypto("Cannot convert ec P-384 key to pkcs8 pem"))
+            }
+            Self::P521(secret_key) => {
+                pkcs8::EncodePrivateKey::to_pkcs8_pem(secret_key, line_ending)
+                    .map(|v| <std::string::String as Clone>::clone(&v).into_boxed_str())
+                    .map_err(|_| Error::Crypto("Cannot convert ec P-521 key to pkcs8 pem"))
+            }
+        }
+    }
+}
+
+impl Signer for EcKey {
+    type Signature = Box<[u8]>;
+
+    fn sign(&self, payload: &[u8]) -> Self::Signature {
+        match self {
+            Self::P256(secret_key) => {
+                let signing_key: p256::ecdsa::SigningKey = secret_key.into();
+                let sig: p256::ecdsa::Signature =
+                    p256::ecdsa::signature::Signer::sign(&signing_key, payload);
+                sig.to_vec().into_boxed_slice()
+            }
+            Self::P384(secret_key) => {
+                let signing_key: p384::ecdsa::SigningKey = secret_key.into();
+                let sig: p384::ecdsa::Signature =
+                    p384::ecdsa::signature::Signer::sign(&signing_key, payload);
+                sig.to_vec().into_boxed_slice()
+            }
+            Self::P521(secret_key) => {
+                let bytes = secret_key.to_bytes();
+                // TODO: Verify if it is working
+                #[allow(clippy::expect_used)]
+                let signing_key =
+                    p521::ecdsa::SigningKey::from_slice(&bytes).expect("valid secret key bytes");
+
+                let sig = p521::ecdsa::signature::Signer::sign(&signing_key, payload);
+                sig.to_vec().into()
+            }
+        }
+    }
+}
+
+// pub(crate) fn ecdsa_der_to_raw(der: &[u8], crv: EcCurve) -> Result<Vec<u8>> {
+//     use openssl::ecdsa::EcdsaSig;
+
+//     let sig =
+//         EcdsaSig::from_der(der).map_err(|_| Error::Crypto("Cannot convert der to EcdsaSig"))?;
+
+//     let size = match crv {
+//         EcCurve::P256 => 32,
+//         EcCurve::P384 => 48,
+//         EcCurve::P521 => 66,
+//     };
+
+//     let mut r = sig.r().to_vec();
+//     let mut s = sig.s().to_vec();
+
+//     // left-pad with zeros
+//     if r.len() < size {
+//         r = [vec![0; size - r.len()], r].concat();
+//     }
+//     if s.len() < size {
+//         s = [vec![0; size - s.len()], s].concat();
+//     }
+
+//     Ok([r, s].concat())
+// }
 
 /// Elliptic Curve (EC) groups used for cryptographic key generation.
 ///
@@ -77,7 +252,16 @@ pub(crate) fn ecdsa_der_to_raw(der: &[u8], crv: EcCurve) -> Result<Vec<u8>> {
 /// [RFC 7517]: https://datatracker.ietf.org/doc/html/rfc7517
 /// [RFC 7518 §6.2]: https://datatracker.ietf.org/doc/html/rfc7518#section-6.2
 #[derive(
-    Debug, Default, Copy, Clone, Serialize, Deserialize, strum_macros::Display, PartialEq, Eq,
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Serialize,
+    Deserialize,
+    strum_macros::Display,
+    strum_macros::IntoStaticStr,
+    PartialEq,
+    Eq,
 )]
 #[non_exhaustive]
 pub enum EcCurve {
@@ -95,16 +279,19 @@ pub enum EcCurve {
     P521,
 }
 
-impl From<EcCurve> for Nid {
-    /// `Nid::X9_62_PRIME256V1` -> `P256`
-    /// `Nid::SECP384R1` -> `P384`
-    /// `Nid::SECP521R1` -> `P521`
-    fn from(value: EcCurve) -> Self {
+impl From<&EcKey> for EcCurve {
+    fn from(value: &EcKey) -> Self {
         match value {
-            EcCurve::P256 => Self::X9_62_PRIME256V1,
-            EcCurve::P384 => Self::SECP384R1,
-            EcCurve::P521 => Self::SECP521R1,
+            EcKey::P256(_) => Self::P256,
+            EcKey::P384(_) => Self::P384,
+            EcKey::P521(_) => Self::P521,
         }
+    }
+}
+
+impl From<EcKey> for EcCurve {
+    fn from(value: EcKey) -> Self {
+        Self::from(&value)
     }
 }
 
@@ -175,6 +362,21 @@ impl From<EcCurve> for EcSigningAlgorithm {
             EcCurve::P256 => Self::Es256,
             EcCurve::P384 => Self::Es384,
             EcCurve::P521 => Self::Es512,
+        }
+    }
+}
+
+impl From<&EcKey> for EcSigningAlgorithm {
+    /// | EcCurve       | SigningAlgorithm      |
+    /// | ------------- | --------------------- |
+    /// | P-256         | ES256                 |
+    /// | P-384         | ES384                 |
+    /// | P-521         | ES512                 |
+    fn from(value: &EcKey) -> Self {
+        match value {
+            EcKey::P256(_) => Self::Es256,
+            EcKey::P384(_) => Self::Es384,
+            EcKey::P521(_) => Self::Es512,
         }
     }
 }

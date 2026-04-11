@@ -10,8 +10,8 @@ repository = "https://github.com/ZennoZenith/cert-rs"
 keywords = ["ssl", "letsencrypt", "acme"]
 readme = "README.md"
 
-[lints.rust]
-unsafe_code = "forbid"
+# [lints.rust]
+# unsafe_code = "forbid"
 # unused = { level = "allow", priority = -1 } # For exploratory dev.
 
 
@@ -26,6 +26,11 @@ name = "full"
 path = "examples/full.rs"
 test = true
 
+[[example]]
+name = "experiment"
+path = "examples/experiment.rs"
+test = true
+
 
 # [[example]]
 # name = "pebble-test"
@@ -37,16 +42,15 @@ test = true
 
 [dependencies]
 base64 = "0.22"
+
 chrono = "0.4"
 http = "1"
 httpdate = "1.0.3"
 mime = "0.3"
-openssl = { version = "0.10", features = ["vendored"] }
 reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_with = { version = "3" }
-sha2 = "0.10"
 strum = "0.28"
 strum_macros = "0.28"
 # time = { version = "0.3", optional = true }
@@ -60,6 +64,52 @@ tokio = { version = "1", features = [
 tracing = { version = "0.1", optional = true }
 url = { version = "2", features = ["serde"] }
 
+# openssl = { version = "0.10" }
+ring = { version = "0.17", features = ["std"] }
+aws-lc-rs = { version = "1.16" }
+
+## Sha2 latest is 0.11 but rsa uses 0.10
+# sha2 = { version = "0.10", default-features = false, features = [
+#   # "alloc",
+#   # "zeroize",
+# ] }
+elliptic-curve = { version = "0.13", default-features = false, features = [
+  "pkcs8",
+] }
+pkcs8 = { version = "0.10", default-features = false, features = ["pem"] }
+
+rsa = { version = "0.9", default-features = false, features = ["pem", "sha2"] }
+p256 = { version = "0.13", default-features = false, features = [
+  "alloc",
+  "ecdsa",
+  "pkcs8",
+  "pem",
+] }
+p384 = { version = "0.13", default-features = false, features = [
+  "alloc",
+  "ecdsa",
+  "pkcs8",
+  "pem",
+] }
+p521 = { version = "0.13", default-features = false, features = [
+  "alloc",
+  "ecdsa",
+  "pkcs8",
+  "pem",
+  "getrandom",
+] }
+
+ed25519-dalek = { version = "2", default-features = false, features = [
+  "pkcs8",
+  "pem",
+] }
+
+x509-parser = { version = "0.18", default-features = false }
+rcgen = { version = "0.14", default-features = false, features = [
+  "pem",
+  "crypto",
+  "ring",
+] }
 
 [dev-dependencies]
 clap = { version = "4", features = ["derive"] }
@@ -72,7 +122,11 @@ toml = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-default = ["tracing"]
+default = ["tracing", "generate"]
 tracing = ["dep:tracing"]
+generate = ["rcgen/aws_lc_rs"]
+# openssl = ["dep:openssl"]
+# aws-lc-rs = ["dep:aws-lc-rs"]
+# ring = ["dep:ring"]
 # time = ["dep:time"]
 # chrone = ["dep:chrono"]

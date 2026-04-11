@@ -1,6 +1,7 @@
 // Licensed under either of the Apache License, Version 2.0 or the MIT license.
 // See LICENSE-APACHE or LICENSE-MIT for details.
 
+#![forbid(unsafe_code)]
 #![deny(clippy::all)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::unwrap_used)]
@@ -32,9 +33,14 @@ pub mod crypto;
 pub mod directory;
 pub mod order;
 
+#[cfg(feature = "generate")]
+pub mod generate;
+
 pub use api::{Problem, ProblemType};
 pub use client::Client;
 pub use crypto::{key::Key, kid::Kid};
 pub use directory::{LetsEncrypt, ZeroSsl};
 pub use error::{Error, Result};
 pub use retry::RetryPolicy;
+
+pub use pkcs8::LineEnding;

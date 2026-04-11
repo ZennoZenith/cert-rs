@@ -1,8 +1,8 @@
 //! Authorization Management
 
 use crate::{Result, account::Account, api::EmptyString, b64};
+use rsa::sha2::{Digest as _, Sha256};
 use serde::{Deserialize, Serialize};
-use sha2::{Digest as _, Sha256};
 use url::Url;
 
 use crate::{challenge::Challenge, order::Identifier, time::TimeRfc3339};
