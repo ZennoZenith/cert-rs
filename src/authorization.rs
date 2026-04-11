@@ -1,6 +1,6 @@
 //! Authorization Management
 
-use crate::{Result, account::Account, api::EmptyString, b64, crypto::jwk::JwkOrKid};
+use crate::{Result, account::Account, api::EmptyString, b64};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
 use url::Url;
@@ -124,10 +124,15 @@ impl Authorization {
     ///
     /// [RFC 8555 §7.5.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.1
     pub async fn get(account: &Account, url: &Url) -> Result<Self> {
-        let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = EmptyString;
-
-        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+        let response = account
+            .client
+            .post(
+                url,
+                &account.credentials.key,
+                account.auth_kid(),
+                &EmptyString,
+            )
+            .await?;
 
         let authorization = response.json::<Self>().await?;
         Ok(authorization)
@@ -172,12 +177,19 @@ impl Authorization {
     ///
     /// [RFC 8555 §7.5.2]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.2
     pub async fn deactivate(account: &Account, url: &Url) -> Result<Self> {
-        let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = serde_json::json!({
-           "status": "deactivated"
-        });
+        #[derive(Serialize)]
+        pub(crate) struct DeactivateRequest {
+            status: &'static str,
+        }
 
-        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+        let body = DeactivateRequest {
+            status: "deactivated",
+        };
+
+        let response = account
+            .client
+            .post(url, &account.credentials.key, account.auth_kid(), &body)
+            .await?;
 
         let authorization = response.json::<Self>().await?;
         Ok(authorization)

@@ -15,7 +15,7 @@ use crate::{
 #[serde(rename_all = "lowercase")]
 pub enum JwkOrKid<'a> {
     /// jwk is used before acme account creation
-    Jwk(Jwk),
+    Jwk(&'a Jwk),
     /// kid is used after acme account creation
     Kid(&'a Kid),
 }

@@ -6,9 +6,7 @@ use crate::{
     Error, Key, Problem, Result, RetryPolicy,
     account::Account,
     api::{EmptyString, extract_location_header, extract_retry_after},
-    b64,
-    crypto::jwk::JwkOrKid,
-    csr,
+    b64, csr,
     time::TimeRfc3339,
 };
 
@@ -256,10 +254,15 @@ impl Order {
     pub async fn create(account: &Account, new_order: NewOrder) -> Result<(Url, Self)> {
         let url = &account.client.directory().new_order;
 
-        let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = new_order;
-
-        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+        let response = account
+            .client
+            .post(
+                url,
+                &account.credentials.key,
+                account.auth_kid(),
+                &new_order,
+            )
+            .await?;
 
         let order_url: Url = extract_location_header(response.headers())?;
         let order = response.json::<Self>().await?;
@@ -290,12 +293,15 @@ impl Order {
     /// Any error from the underlying HTTP client or JSON deserialization
     /// is propagated.
     pub async fn status(account: &Account, order_url: &Url) -> Result<Self> {
-        let url = order_url;
-
-        let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = EmptyString;
-
-        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+        let response = account
+            .client
+            .post(
+                order_url,
+                &account.credentials.key,
+                account.auth_kid(),
+                &EmptyString,
+            )
+            .await?;
 
         let order = response.json::<Self>().await?;
 
@@ -343,13 +349,17 @@ impl Order {
         retry_policy: &RetryPolicy,
     ) -> Result<Self> {
         let mut retrying = retry_policy.state();
-        let url = order_url;
 
         loop {
-            let auth = JwkOrKid::Kid(&account.credentials.kid);
-            let body = EmptyString;
-
-            let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+            let response = account
+                .client
+                .post(
+                    order_url,
+                    &account.credentials.key,
+                    account.auth_kid(),
+                    &EmptyString,
+                )
+                .await?;
             let retry_after = extract_retry_after(response.headers())?;
             let order = response.json::<Self>().await?;
 
@@ -397,6 +407,11 @@ impl Order {
     /// Any error from cryptographic operations, CSR construction, encoding,
     /// or HTTP communication is propagated as [Error].
     pub async fn finalize(&self, account: &Account, domain_key: &Key) -> Result<X509Req> {
+        #[derive(Serialize)]
+        pub(crate) struct FinalizeRequest {
+            csr: String,
+        }
+
         let domains: Vec<&str> = self
             .identifiers
             .iter()
@@ -409,14 +424,19 @@ impl Order {
         let csr_der_bytes = csr.to_der().map_err(|_| Error::Crypto("CSR to der"))?;
         let csr_der_encoded = b64::b64u_encode(csr_der_bytes);
 
-        let url = &self.finalize;
+        let body = FinalizeRequest {
+            csr: csr_der_encoded,
+        };
 
-        let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = serde_json::json!({
-            "csr": csr_der_encoded
-        });
-
-        account.client.post(url, &account.credentials.key, auth, body).await?;
+        account
+            .client
+            .post(
+                &self.finalize,
+                &account.credentials.key,
+                account.auth_kid(),
+                &body,
+            )
+            .await?;
 
         Ok(csr)
     }
@@ -467,11 +487,16 @@ impl Order {
             return Err(Error::CertificateUrlNotPresent);
         };
 
-        let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = EmptyString;
-
         // TODO: Check in RFC if there is a accept header. If present add to mime type in api::handle_response_error
-        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+        let response = account
+            .client
+            .post(
+                url,
+                &account.credentials.key,
+                account.auth_kid(),
+                &EmptyString,
+            )
+            .await?;
         // response "content-type": "application/pem-certificate-chain; charset=utf-8",
 
         // TODO: The default format of the certificate is application/pem-certificate-

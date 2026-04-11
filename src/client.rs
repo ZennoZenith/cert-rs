@@ -2,7 +2,7 @@ use chrono::Duration;
 use http::HeaderMap;
 use reqwest::Response;
 use serde::Serialize;
-use std::{collections::VecDeque, fmt, ops::ControlFlow};
+use std::{collections::VecDeque, ops::ControlFlow};
 use tokio::sync::Mutex;
 use url::Url;
 
@@ -128,21 +128,20 @@ impl Client {
             .map(Box::from)
     }
 
-    pub(crate) async fn post<T: Clone + fmt::Debug + Serialize>(
+    pub(crate) async fn post<T: Serialize + Sync>(
         &self,
         url: &Url,
         key: &Key,
         auth: JwkOrKid<'_>,
-        body: T,
+        body: &T,
     ) -> Result<Response> {
         let mut retrying = self.nonce_retry_policy.state();
 
         loop {
             let nonce = self.nonce().await?;
 
-            // TODO: try to optimize auth and body clones
-            let jws_header = JwsProtectedHeaders::new(key, url, auth.clone(), Some(nonce.as_ref()));
-            let jws = Jws::new(key, jws_header, body.clone());
+            let jws_header = JwsProtectedHeaders::new(key, url, &auth, Some(nonce.as_ref()));
+            let jws = Jws::new(key, jws_header, body);
 
             let maybe_response = self
                 .client

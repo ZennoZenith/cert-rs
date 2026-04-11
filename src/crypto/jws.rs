@@ -110,12 +110,12 @@ pub struct JwsProtectedHeaders<'a> {
     #[serde(rename = "alg")]
     pub signing_algorithm: SigningAlgorithm,
     #[serde(flatten)]
-    pub auth: JwkOrKid<'a>,
+    pub auth: &'a JwkOrKid<'a>,
 }
 
 impl<'a> JwsProtectedHeaders<'a> {
     #[must_use]
-    pub fn new(key: &'a Key, url: &'a Url, auth: JwkOrKid<'a>, nonce: Option<&'a str>) -> Self {
+    pub fn new(key: &'a Key, url: &'a Url, auth: &'a JwkOrKid<'a>, nonce: Option<&'a str>) -> Self {
         let signing_algorithm: SigningAlgorithm = match key {
             Key::Rsa { signing_algo, .. } => SigningAlgorithm::from(*signing_algo),
             Key::Ec { crv, .. } => SigningAlgorithm::from(EcSigningAlgorithm::from(*crv)),
@@ -150,11 +150,15 @@ pub struct Jws<'a, T: Serialize> {
     key: &'a Key,
 
     protected: JwsProtectedHeaders<'a>,
-    payload: T,
+    payload: &'a T,
 }
 
 impl<'a, T: Serialize> Jws<'a, T> {
-    pub const fn new(key: &'a Key, jws_protected_header: JwsProtectedHeaders<'a>, body: T) -> Self {
+    pub const fn new(
+        key: &'a Key,
+        jws_protected_header: JwsProtectedHeaders<'a>,
+        body: &'a T,
+    ) -> Self {
         Self {
             key,
             protected: jws_protected_header,

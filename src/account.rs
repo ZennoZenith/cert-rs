@@ -158,7 +158,7 @@ pub struct AccountCredentials {
     /// The account's private key
     pub(crate) key: Key,
 
-    /// Account jwk. Not Serialized
+    /// Account jwk
     pub(crate) jwk: Jwk,
 }
 
@@ -247,6 +247,16 @@ impl AccountCredentials {
             jwk,
         })
     }
+
+    #[must_use]
+    pub const fn auth_jwk(&self) -> JwkOrKid<'_> {
+        JwkOrKid::Jwk(&self.jwk)
+    }
+
+    #[must_use]
+    pub const fn auth_kid(&self) -> JwkOrKid<'_> {
+        JwkOrKid::Kid(&self.kid)
+    }
 }
 
 /// Used for ACME account management, Not to be confused with [``AccountObject``].
@@ -274,6 +284,16 @@ impl Account {
 
     pub const fn credentials(&self) -> &AccountCredentials {
         &self.credentials
+    }
+
+    #[must_use]
+    pub const fn auth_jwk(&self) -> JwkOrKid<'_> {
+        self.credentials.auth_jwk()
+    }
+
+    #[must_use]
+    pub const fn auth_kid(&self) -> JwkOrKid<'_> {
+        self.credentials.auth_kid()
     }
 
     /// Creates a new ACME account or retrieves an existing one by sending a
@@ -321,7 +341,7 @@ impl Account {
             ..new_account
         };
 
-        Self::get_or_create(client, &key, new_account).await
+        Self::get_or_create(client, key, new_account).await
         // #[cfg(feature = "tracing")]
         // {
         //     // TODO: handle if status is 200 or 201(created) https://www.rfc-editor.org/rfc/rfc8555#section-7.3
@@ -368,7 +388,7 @@ impl Account {
     /// deserialization is propagated as [`Error`].
     ///
     /// [RFC 8555 §7.3.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.1
-    pub async fn fetch(client: impl Into<Arc<Client>>, key: &Key) -> Result<Self> {
+    pub async fn fetch(client: impl Into<Arc<Client>>, key: Key) -> Result<Self> {
         let new_account = NewAccount {
             only_return_existing: Some(true),
             ..Default::default()
@@ -423,18 +443,16 @@ impl Account {
     /// [RFC 8555 §7.3]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3
     pub async fn get_or_create(
         client: impl Into<Arc<Client>>,
-        key: &Key,
+        key: Key,
         new_account: NewAccount,
     ) -> Result<Self> {
         let client = client.into();
         let url = &client.directory.new_account;
 
-        let jwk = Jwk::try_from(key)?;
+        let jwk = Jwk::try_from(&key)?;
+        let auth = JwkOrKid::Jwk(&jwk);
 
-        let auth = JwkOrKid::Jwk(jwk.clone());
-        let body = new_account;
-
-        let response = client.post(url, key, auth, body).await?;
+        let response = client.post(url, &key, auth, &new_account).await?;
 
         let kid: Kid = extract_location_header(response.headers()).map(Into::into)?;
 
@@ -449,9 +467,9 @@ impl Account {
         Ok(Self {
             client,
             credentials: AccountCredentials {
-                kid,
-                key: key.clone(),
                 directory_url,
+                kid,
+                key,
                 jwk,
             },
         })
@@ -494,10 +512,9 @@ impl Account {
         let url = &client.directory.new_account;
 
         let jwk = Jwk::try_from(key)?;
-        let auth = JwkOrKid::Jwk(jwk);
-        let body = new_account;
+        let auth = JwkOrKid::Jwk(&jwk);
 
-        let response = client.post(url, key, auth, body).await?;
+        let response = client.post(url, key, auth, &new_account).await?;
 
         let account_object = response.json::<AccountObject>().await?;
 
@@ -549,13 +566,12 @@ impl Account {
         }
 
         let url = &self.credentials.kid;
-
         let jwk = Jwk::try_from(&self.credentials.key)?;
 
-        let auth = JwkOrKid::Kid(&self.credentials.kid);
-        let body = update_account;
-
-        let response = self.client.post(url, &self.credentials.key, auth, body).await?;
+        let response = self
+            .client
+            .post(url, &self.credentials.key, self.auth_kid(), &update_account)
+            .await?;
 
         let intermediate_account = response.json::<IntermidiateAccount>().await?;
 
@@ -566,10 +582,8 @@ impl Account {
         Ok(Self {
             client: Arc::clone(&self.client),
             credentials: AccountCredentials {
-                kid: self.credentials.kid.clone(),
-                key: self.credentials.key.clone(),
-                directory_url: self.credentials.directory_url.clone(),
                 jwk,
+                ..AccountCredentials::clone(&self.credentials)
             },
         })
     }
@@ -676,22 +690,22 @@ impl Account {
         let old_key = &self.credentials.key;
         let old_jwk = Jwk::try_from(old_key)?;
 
-        let inner_payload = InnerPayload {
+        let inner_payload = &InnerPayload {
             account: &self.credentials.kid,
             old_jwk,
         };
 
-        let inner_jwk = Jwk::try_from(&new_key)?;
+        let inner_jwk = &Jwk::try_from(&new_key)?;
         let inner_auth = JwkOrKid::Jwk(inner_jwk);
 
-        let inner_jws_header = JwsProtectedHeaders::new(&new_key, url, inner_auth, None);
-        let inner_jws = Jws::new(&new_key, inner_jws_header, inner_payload);
+        let inner_jws_header = JwsProtectedHeaders::new(&new_key, url, &inner_auth, None);
+        let inner_jws = &Jws::new(&new_key, inner_jws_header, inner_payload);
 
         let outer_auth = JwkOrKid::Kid(&self.credentials.kid);
 
         let new_account_maybe = match self.client.post(url, old_key, outer_auth, inner_jws).await {
             Ok(v) => match v.status() {
-                StatusCode::OK => Self::fetch(self.client.clone(), &new_key).await,
+                StatusCode::OK => Self::fetch(self.client.clone(), new_key).await,
                 StatusCode::CONFLICT => Err(Error::ExistingAccountDuringKeyRollover),
                 _ => Err(Error::Str(
                     "Status code other than OK/CONFLICT recieved when key rollover.",
@@ -753,14 +767,20 @@ impl Account {
     ///
     /// [RFC 8555 §7.3.6]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.3.6
     pub async fn deactivate(self) -> Result<()> {
+        #[derive(Serialize)]
+        pub(crate) struct DeactivateRequest {
+            status: &'static str,
+        }
+
         let url = &self.credentials.kid.as_url();
 
-        let auth = JwkOrKid::Kid(&self.credentials.kid);
-        let body = serde_json::json!({
-           "status": "deactivated"
-        });
+        let body = DeactivateRequest {
+            status: "deactivated",
+        };
 
-        self.client.post(url, &self.credentials.key, auth, body).await?;
+        self.client
+            .post(url, &self.credentials.key, self.auth_kid(), &body)
+            .await?;
 
         Ok(())
     }

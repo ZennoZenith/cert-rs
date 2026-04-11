@@ -143,10 +143,10 @@ mod tests {
         let jwk_thumbprint = jwk.thumbprint();
         let jwk_json = serde_json::to_string(&jwk).unwrap().into_boxed_str();
         let url = Url::parse("https://example.com").unwrap();
-        let auth = JwkOrKid::Jwk(jwk);
+        let auth = JwkOrKid::Jwk(&jwk);
         let nonce = Box::from("test-nonce");
         let body = Box::from("test-body");
-        let jws_protected_header = JwsProtectedHeaders::new(&key, &url, auth, Some(&nonce));
+        let jws_protected_header = JwsProtectedHeaders::new(&key, &url, &auth, Some(&nonce));
         let jws_protected_header_json =
             serde_json::to_string(&jws_protected_header).unwrap().into_boxed_str();
         let jws = Jws::new(&key, jws_protected_header, &body);
@@ -375,11 +375,11 @@ mod tests {
 
             let jwk = Jwk::try_from(&key).unwrap();
             let url = &fixture.url;
-            let auth = JwkOrKid::Jwk(jwk);
+            let auth = JwkOrKid::Jwk(&jwk);
             let nonce = fixture.nonce.as_ref();
-            let body = fixture.body.as_ref();
+            let body = Box::<str>::from(fixture.body.as_ref());
 
-            let jws_protected_header = JwsProtectedHeaders::new(&key, url, auth, Some(nonce));
+            let jws_protected_header = JwsProtectedHeaders::new(&key, url, &auth, Some(nonce));
             let jws_protected_header_json =
                 serde_json::to_string(&jws_protected_header).unwrap().into_boxed_str();
 
@@ -388,7 +388,7 @@ mod tests {
                 "Rsa Jws Protected Header Serialized are not equal"
             );
 
-            let jws = Jws::new(&key, jws_protected_header, body);
+            let jws = Jws::new(&key, jws_protected_header, &body);
             let jws_json = serde_json::to_string(&jws).unwrap().into_boxed_str();
 
             assert_eq!(fixture.jws, jws_json, "Rsa Jws Serialized are not equal");

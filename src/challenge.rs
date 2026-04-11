@@ -12,7 +12,6 @@ use crate::{
     Result,
     account::Account,
     api::{EmptyObject, EmptyString},
-    crypto::jwk::JwkOrKid,
     time::TimeRfc3339,
 };
 
@@ -229,11 +228,15 @@ impl KnownChallenge {
     ///
     /// [RFC 8555 §7.5.1]: https://datatracker.ietf.org/doc/html/rfc8555#section-7.5.1
     pub async fn respond(account: &Account, url: &Url) -> Result<Self> {
-        let url = &url;
-
-        let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = EmptyObject;
-        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+        let response = account
+            .client
+            .post(
+                url,
+                &account.credentials.key,
+                account.auth_kid(),
+                &EmptyObject,
+            )
+            .await?;
 
         let challenge = response.json::<Self>().await?;
         Ok(challenge)
@@ -310,11 +313,15 @@ impl KnownChallenge {
     ///
     /// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
     pub async fn get(account: &Account, url: &Url) -> Result<Self> {
-        let url = &url;
-
-        let auth = JwkOrKid::Kid(&account.credentials.kid);
-        let body = EmptyString;
-        let response = account.client.post(url, &account.credentials.key, auth, body).await?;
+        let response = account
+            .client
+            .post(
+                url,
+                &account.credentials.key,
+                account.auth_kid(),
+                &EmptyString,
+            )
+            .await?;
 
         let challenge = response.json::<Self>().await?;
         Ok(challenge)
