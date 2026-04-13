@@ -20,7 +20,6 @@ pub(crate) const LANGUAGE: &str = "en-US,en;q=0.9";
 mod api;
 mod b64;
 mod client;
-mod csr;
 mod error;
 mod retry;
 mod time;

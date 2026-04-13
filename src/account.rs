@@ -172,7 +172,10 @@ impl Serialize for AccountCredentials {
 
         state.serialize_field("directoryUrl", &self.directory_url)?;
         state.serialize_field("kid", &self.kid)?;
-        state.serialize_field("keyDto", &VersionedKeyDto::from(&self.key))?;
+        state.serialize_field(
+            "keyDto",
+            &VersionedKeyDto::try_from(&self.key).map_err(serde::ser::Error::custom)?,
+        )?;
 
         state.end()
     }
@@ -197,7 +200,7 @@ impl<'de> Deserialize<'de> for AccountCredentials {
             directory_url,
         } = Helper::deserialize(deserializer)?;
 
-        let key = Key::from(key_dto);
+        let key = Key::try_from(key_dto).map_err(serde::de::Error::custom)?;
 
         let jwk = Jwk::try_from(&key).map_err(serde::de::Error::custom)?;
 

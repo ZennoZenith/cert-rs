@@ -8,7 +8,7 @@ use crate::{
     Error, Result,
     crypto::{
         ec::{EcCurve, EcKey},
-        key_dto::VersionedKeyDto,
+        key_dto::{KeyDto, VersionedKeyDto},
         okp::{OkpCurve, OkpKey},
         rsa::{RsaKey, RsaSigningAlgorithm},
     },
@@ -446,52 +446,34 @@ impl Key {
 //     BigNum::from_slice(&decoded).map_err(|_| Error::Crypto("Cannot convert base64 to BigNum"))
 // }
 
-impl From<&VersionedKeyDto> for Key {
-    fn from(_dto: &VersionedKeyDto) -> Self {
-        // if dto.version() != 1 {
-        //     return Err(Error::Str("Unsupported KeyDto version"));
-        // }
+impl TryFrom<&VersionedKeyDto> for Key {
+    type Error = Error;
 
-        // TODO:
-        unimplemented!()
+    fn try_from(value: &VersionedKeyDto) -> Result<Self> {
+        if value.version() != 1 {
+            return Err(Error::Str("Unsupported KeyDto version"));
+        }
+
+        match &value.key {
+            KeyDto::Rsa {
+                signing_algo,
+                pkcs8_pem,
+                ..
+            } => Ok(Self::from(RsaKey::from_pkcs8_pem_with_signing_algo(
+                pkcs8_pem,
+                *signing_algo,
+            )?)),
+            KeyDto::Ec { pkcs8_pem, .. } => Ok(Self::from(EcKey::from_pkcs8_pem(pkcs8_pem)?)),
+
+            KeyDto::Okp { pkcs8_pem, .. } => Ok(Self::from(OkpKey::from_pkcs8_pem(pkcs8_pem)?)),
+        }
     }
 }
 
-impl From<VersionedKeyDto> for Key {
-    fn from(value: VersionedKeyDto) -> Self {
-        Self::from(&value)
-    }
-}
+impl TryFrom<VersionedKeyDto> for Key {
+    type Error = Error;
 
-#[allow(dead_code)]
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(tag = "kty", rename_all = "UPPERCASE")]
-enum JwkRepr {
-    /// RSA private key
-    #[serde(rename = "RSA")]
-    Rsa {
-        // Public
-        n: String,
-        e: String,
-        // Private
-        d: String,
-        p: String,
-        q: String,
-        dp: String,
-        dq: String,
-        qi: String,
-        // Algorithm metadata
-        alg: RsaSigningAlgorithm,
-    },
-    /// Elliptic-curve (P-256 / P-384 / P-521) private key
-    #[serde(rename = "EC")]
-    Ec {
-        crv: EcCurve,
-        x: String,
-        y: String,
-        d: String,
-    },
-    /// Octet key pair – Ed25519 / X25519 (OKP)
-    #[serde(rename = "OKP")]
-    Okp { crv: OkpCurve, x: String, d: String },
+    fn try_from(value: VersionedKeyDto) -> Result<Self> {
+        Self::try_from(&value)
+    }
 }

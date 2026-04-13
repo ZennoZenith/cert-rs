@@ -106,7 +106,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
     let account = account.key_rollover(key_2).await?;
     // //// OR
     // // account.key_rollover_mut(key_2).await?;
-    // println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
+    println!("{}", &serde_json::to_string_pretty(&account.credentials())?);
 
     //// Account deactivated
     // let account_cred = account.credentials().to_owned();
