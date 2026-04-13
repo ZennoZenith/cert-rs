@@ -75,6 +75,12 @@ elliptic-curve = { version = "0.13", default-features = false, features = [
   "pkcs8",
 ] }
 pkcs8 = { version = "0.10", default-features = false, features = ["pem"] }
+ecdsa = { version = "0.16", default-features = false, features = [
+  "alloc",
+  "signing",
+  "pkcs8",
+  "pem",
+] }
 
 rsa = { version = "0.9", default-features = false, features = ["pem", "sha2"] }
 p256 = { version = "0.13", default-features = false, features = [
@@ -121,7 +127,8 @@ toml = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-default = ["tracing"]
+# default = ["tracing"]
+default = ["tracing", "generate"]
 tracing = ["dep:tracing"]
 generate = ["rcgen/aws_lc_rs"]
 verify = ["x509-parser/verify"]

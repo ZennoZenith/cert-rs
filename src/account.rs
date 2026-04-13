@@ -126,14 +126,11 @@ pub struct AccountObject {
     /// The status of this account
     pub status: AccountStatus,
 
-    #[allow(dead_code)]
     pub contact: Option<Vec<String>>,
 
-    #[allow(dead_code)]
     pub terms_of_service_agreed: Option<bool>,
 
     // TODO: external_account_binding object type
-    #[allow(dead_code)]
     pub external_account_binding: Option<serde_json::Value>,
 
     /// A Url from which a list of orders submitted by this acocount can be fetched

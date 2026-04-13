@@ -143,6 +143,15 @@ fn p521_to_jwk() {
     let ec_p521_der = p521::SecretKey::from_pkcs8_der(EC_P521_DER).unwrap();
     let ec_p521_pem = p521::SecretKey::from_pkcs8_pem(EC_P521_PEM).unwrap();
 
+    let signing_key = ecdsa::SigningKey::<p521::NistP521>::from_pkcs8_pem(EC_P521_PEM).unwrap();
+    let secret_key: p521::SecretKey = signing_key.as_nonzero_scalar().into();
+
+    let signing_key: ecdsa::SigningKey<p521::NistP521> = secret_key.into();
+    let signing_key: p521::ecdsa::SigningKey = signing_key.into();
+    let sig: p521::ecdsa::Signature =
+        p521::ecdsa::signature::Signer::sign(&signing_key, b"payload");
+    sig.to_vec().into_boxed_slice();
+
     assert_eq!(ec_p521_der, ec_p521_pem);
 
     let key_priv = ec_p521_der;
@@ -214,11 +223,11 @@ fn gen_keys() {
 }
 
 fn main() -> color_eyre::eyre::Result<()> {
-    rsa_to_jwk();
-    p256_to_jwk();
-    p384_to_jwk();
+    // rsa_to_jwk();
+    // p256_to_jwk();
+    // p384_to_jwk();
     p521_to_jwk();
-    ed25519_to_jwk();
+    // ed25519_to_jwk();
 
     println!("{:?}", detect_curve(RSA_4096_DER));
     println!("{:?}", detect_curve(EC_P256_DER));

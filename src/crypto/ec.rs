@@ -177,14 +177,11 @@ impl Signer for EcKey {
                 sig.to_vec().into_boxed_slice()
             }
             Self::P521(secret_key) => {
-                let bytes = secret_key.to_bytes();
-                // TODO: Verify if it is working
-                #[allow(clippy::expect_used)]
-                let signing_key =
-                    p521::ecdsa::SigningKey::from_slice(&bytes).expect("valid secret key bytes");
-
-                let sig = p521::ecdsa::signature::Signer::sign(&signing_key, payload);
-                sig.to_vec().into()
+                let signing_key: ecdsa::SigningKey<p521::NistP521> = secret_key.into();
+                let signing_key: p521::ecdsa::SigningKey = signing_key.into();
+                let sig: p521::ecdsa::Signature =
+                    p521::ecdsa::signature::Signer::sign(&signing_key, b"payload");
+                sig.to_vec().into_boxed_slice()
             }
         }
     }

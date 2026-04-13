@@ -37,7 +37,7 @@ pub mod generate;
 
 pub use api::{Problem, ProblemType};
 pub use client::Client;
-pub use crypto::{key::Key, kid::Kid};
+pub use crypto::{key::Key, key_dto::VersionedKeyDto, kid::Kid};
 pub use directory::{LetsEncrypt, ZeroSsl};
 pub use error::{Error, Result};
 pub use retry::RetryPolicy;
