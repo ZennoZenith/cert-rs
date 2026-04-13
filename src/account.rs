@@ -17,6 +17,7 @@ use crate::{
         jws::{Jws, JwsProtectedHeaders},
         key_dto::VersionedKeyDto,
     },
+    directory::Directory,
 };
 
 /// New Account
@@ -284,6 +285,11 @@ impl Account {
             client,
             credentials,
         }
+    }
+
+    #[must_use]
+    pub fn directory(&self) -> &Directory {
+        &self.client.directory
     }
 
     pub const fn credentials(&self) -> &AccountCredentials {

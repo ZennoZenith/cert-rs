@@ -137,6 +137,9 @@ pub enum OrderStatus {
 pub struct NewOrder {
     pub identifiers: Vec<Identifier>,
 
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Box<str>>,
+
     /// The requested value of the notBefore field in the certificate
     #[serde(skip_serializing_if = "Option::is_none")]
     pub not_before: Option<TimeRfc3339>,
@@ -152,6 +155,7 @@ impl NewOrder {
             identifiers,
             not_before: None,
             not_after: None,
+            profile: None,
         }
     }
 
@@ -161,6 +165,7 @@ impl NewOrder {
             identifiers,
             not_before: None,
             not_after: None,
+            profile: None,
         }
     }
 }

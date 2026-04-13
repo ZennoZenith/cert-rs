@@ -101,6 +101,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
     let key_2 = Key::from_pkcs8_pem(&key_2_pem)?;
 
     let account = Account::create(client, key_1, account_create).await?;
+    println!("{}", &serde_json::to_string_pretty(&account.directory())?);
 
     let account = account.key_rollover(key_2).await?;
     // //// OR
@@ -114,7 +115,8 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     let domains: Vec<String> =
         vec![String::from("abc.zennozenith.com"), String::from("*.zennozenith.com")];
-    let new_order = NewOrder::from_domains(domains);
+    let mut new_order = NewOrder::from_domains(domains);
+    new_order.profile = Some("shortlived".into());
 
     // let ips: Vec<IpAddr> = vec![IpAddr::from([127, 0, 0, 1])];
     // let new_order = NewOrder::from_ips(ips);

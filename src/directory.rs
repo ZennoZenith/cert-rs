@@ -4,6 +4,8 @@
 //! ACME operation, ACME servers provide a directory object. This should be the
 //! only URL needed to configure clients.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -28,7 +30,9 @@ pub struct Directory {
     pub key_change: Url,
 
     pub new_authz: Option<Url>,
-    pub meta: Option<DirectoryMeta>,
+
+    #[serde(default)]
+    pub meta: DirectoryMeta,
 }
 
 /// Directory Metadata Fields.
@@ -36,13 +40,23 @@ pub struct Directory {
 /// Defined in [RFC 8555 §9.7.6].
 ///
 /// [RFC 8555 §9.7.6]: https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.6
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DirectoryMeta {
     pub terms_of_service: Option<String>,
     pub website: Option<String>,
     pub caa_identities: Option<Vec<String>>,
     pub external_account_required: Option<bool>,
+
+    #[serde(default)]
+    pub(crate) profiles: HashMap<String, String>,
+}
+
+/// Profile meta information from the server directory
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+pub struct ProfileMeta<'a> {
+    pub name: &'a str,
+    pub description: &'a str,
 }
 
 impl Directory {
@@ -108,6 +122,14 @@ impl Directory {
         serde_json::from_str(directory_json).map_err(Into::into)
     }
 
+    /// Yield the profiles supported according to the account's server directory
+    pub fn profiles(&self) -> impl Iterator<Item = ProfileMeta<'_>> {
+        self.meta
+            .profiles
+            .iter()
+            .map(|(name, description)| ProfileMeta { name, description })
+    }
+
     /// Fetches and constructs a [Self] from the Let's Encrypt production endpoint.
     ///
     /// For staging/testing, use [``Self::lets_encrypt_staging``] to avoid hitting production rate limits.
@@ -143,17 +165,17 @@ impl Directory {
 impl Directory {
     #[must_use]
     pub fn terms_of_service(&self) -> Option<&str> {
-        self.meta.as_ref().map(|v| v.terms_of_service.as_deref())?
+        self.meta.terms_of_service.as_deref()
     }
 
     #[must_use]
     pub fn website(&self) -> Option<&str> {
-        self.meta.as_ref().map(|v| v.website.as_deref())?
+        self.meta.website.as_deref()
     }
 
     #[must_use]
-    pub fn external_account_required(&self) -> Option<bool> {
-        self.meta.as_ref().map(|v| v.external_account_required)?
+    pub const fn external_account_required(&self) -> Option<bool> {
+        self.meta.external_account_required
     }
 }
 
