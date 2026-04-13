@@ -210,7 +210,7 @@ impl Authorization {
     /// `GET /.well-known/acme-challenge/<get_keyauth()>`
     #[must_use]
     pub fn gen_keyauth(account: &Account, challenge_token: &str) -> Box<str> {
-        format!("{challenge_token}.{}", account.credentials.jwk.thumbprint()).into_boxed_str()
+        format!("{challenge_token}.{}", account.credentials.jwk.thumbprint).into_boxed_str()
     }
 
     /// Thumbprint

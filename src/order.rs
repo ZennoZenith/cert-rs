@@ -13,28 +13,7 @@ use crate::{
 use rcgen::CertificateSigningRequest;
 use serde::{Deserialize, Serialize};
 use url::Url;
-use x509_parser::nom::AsBytes;
-
-// /// [RFC 8555 §9.7.7](https://datatracker.ietf.org/doc/html/rfc8555#section-9.7.7)
-// #[derive(
-//     Debug,
-//     Clone,
-//     Copy,
-//     Deserialize,
-//     Serialize,
-//     Default,
-//     strum_macros::Display,
-//     strum_macros::EnumString,
-//     strum_macros::IntoStaticStr,
-//     PartialEq,
-//     Eq,
-// )]
-// #[strum(ascii_case_insensitive)]
-// pub enum IdentifierType {
-//     #[default]
-//     #[serde(rename = "dns")]
-//     Dns,
-// }
+use x509_parser::nom::AsBytes as _;
 
 /// An ACME identifier object describing the entity for which a certificate
 /// is requested.

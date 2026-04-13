@@ -59,9 +59,18 @@ pub enum JwkOrKid<'a> {
 /// [RFC 7518]: https://datatracker.ietf.org/doc/html/rfc7518
 /// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
 #[derive(Debug, Clone, Serialize)]
+pub struct Jwk {
+    #[serde(flatten)]
+    pub(crate) jwk_inner: JwkInner,
+
+    #[serde(skip)]
+    pub(crate) thumbprint: Box<str>,
+}
+
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 #[serde(tag = "kty")]
-pub enum Jwk {
+pub enum JwkInner {
     /// RSA public key parameters.
     Rsa {
         /// Public exponent (base64url-encoded, no padding).
@@ -96,7 +105,7 @@ pub enum Jwk {
     },
 }
 
-impl Jwk {
+impl JwkInner {
     /// Computes the [RFC 7638] JWK thumbprint of this public key.
     ///
     /// jwk -> to json -> sha256 hash -> base64url
@@ -169,25 +178,31 @@ impl TryFrom<&Key> for Jwk {
     type Error = Error;
 
     fn try_from(value: &Key) -> Result<Self> {
-        match value {
+        let jwk_inner = match value {
             Key::Rsa(key) => {
                 let modulus = key.b64_modulus();
                 let exponent = key.b64_exponent();
 
-                Ok(Self::Rsa { exponent, modulus })
+                JwkInner::Rsa { exponent, modulus }
             }
             Key::Ec(key) => {
                 let (x, y) = key.b64_coordinate_x_y()?;
                 let crv = EcCurve::from(key);
 
-                Ok(Self::Ec { crv, x, y })
+                JwkInner::Ec { crv, x, y }
             }
             Key::Okp(key) => {
                 let public_key = key.b64_public_key();
                 let crv = OkpCurve::from(key);
 
-                Ok(Self::Okp { crv, public_key })
+                JwkInner::Okp { crv, public_key }
             }
-        }
+        };
+        let thumbprint = jwk_inner.thumbprint();
+
+        Ok(Self {
+            jwk_inner,
+            thumbprint,
+        })
     }
 }
