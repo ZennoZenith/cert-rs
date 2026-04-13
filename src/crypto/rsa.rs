@@ -30,7 +30,7 @@ pub struct RsaKey {
 impl RsaKey {
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     pub fn from_pkcs8_der_with_signing_algo(
         der: &[u8],
         signing_algo: RsaSigningAlgorithm,
@@ -43,7 +43,7 @@ impl RsaKey {
 
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     pub fn from_pkcs8_pem_with_signing_algo(
         pem: &str,
         signing_algo: RsaSigningAlgorithm,
@@ -77,13 +77,6 @@ impl RsaKey {
     }
 }
 
-/// # Errors
-///
-/// TODO:
-///
-/// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
-/// [RFC 7517]: https://datatracker.ietf.org/doc/html/rfc7517
-/// [RFC 7518]: https://datatracker.ietf.org/doc/html/rfc7518
 impl FromDerPemPkcs8 for RsaKey {
     /// Default signing algorithm (i.e. [``cert_rs::crypto::rsa::RsaSigningAlgorithm::default()``])
     /// is being used.
@@ -95,7 +88,6 @@ impl FromDerPemPkcs8 for RsaKey {
     {
         let curve = Curve::from_pkcs8_der(der)?;
         if !matches!(curve, Curve::Rsa) {
-            // TODO: better message
             return Err(Error::Crypto("Is not a rsa key."));
         }
 
@@ -121,7 +113,6 @@ impl FromDerPemPkcs8 for RsaKey {
     {
         let curve = Curve::from_pkcs8_pem(pem)?;
         if !matches!(curve, Curve::Rsa) {
-            // TODO: better message
             return Err(Error::Crypto("Is not a rsa key."));
         }
 

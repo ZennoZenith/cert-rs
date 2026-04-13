@@ -83,7 +83,6 @@ impl FromDerPemPkcs8 for EcKey {
         Self: std::marker::Sized,
     {
         let Curve::Ec(ec_curve) = Curve::from_pkcs8_der(der)? else {
-            // TODO: better message
             return Err(Error::Crypto("Is not a ec key."));
         };
 
@@ -105,7 +104,6 @@ impl FromDerPemPkcs8 for EcKey {
         Self: std::marker::Sized,
     {
         let Curve::Ec(ec_curve) = Curve::from_pkcs8_pem(pem)? else {
-            // TODO: better message
             return Err(Error::Crypto("Is not a ec key."));
         };
 

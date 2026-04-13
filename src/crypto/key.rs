@@ -17,14 +17,14 @@ use crate::{
 pub trait FromDerPemPkcs8 {
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     fn from_pkcs8_der(der: &[u8]) -> crate::Result<Self>
     where
         Self: std::marker::Sized;
 
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     fn from_pkcs8_pem(pem: &str) -> crate::Result<Self>
     where
         Self: std::marker::Sized;
@@ -33,12 +33,12 @@ pub trait FromDerPemPkcs8 {
 pub trait ToDerPemPkcs8 {
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     fn to_pkcs8_der(&self) -> crate::Result<Box<[u8]>>;
 
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     fn to_pkcs8_pem(&self, line_ending: LineEnding) -> crate::Result<Box<str>>;
 }
 
@@ -61,7 +61,6 @@ pub(crate) trait Signer {
 )]
 #[non_exhaustive]
 #[serde(rename_all = "UPPERCASE")]
-/// TODO: can be convert to from already defined ec and okp curve
 pub enum Curve {
     #[strum(serialize = "RSA")]
     Rsa,
@@ -258,7 +257,7 @@ impl From<OkpKey> for Key {
 impl Key {
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     pub fn from_rsa_pkcs8_der_with_signing_algo(
         der: &[u8],
         signing_algo: RsaSigningAlgorithm,
@@ -271,7 +270,7 @@ impl Key {
 
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     pub fn from_rsa_pkcs8_pem_with_signing_algo(
         pem: &str,
         signing_algo: RsaSigningAlgorithm,
@@ -284,7 +283,7 @@ impl Key {
 
     /// # Errors
     ///
-    /// TODO:
+    /// See [``crate::Error::Crypto``]
     pub fn generate_csr(&self, domains: &[&str]) -> Result<CertificateSigningRequest> {
         let key_pem = self.to_pkcs8_pem(LineEnding::LF)?;
         let key_pair = KeyPair::from_pem(key_pem.as_ref())

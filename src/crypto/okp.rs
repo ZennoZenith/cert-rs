@@ -27,7 +27,6 @@ impl OkpKey {
     }
 }
 
-/// TODO:
 impl FromDerPemPkcs8 for OkpKey {
     fn from_pkcs8_der(der: &[u8]) -> Result<Self>
     where
@@ -36,7 +35,6 @@ impl FromDerPemPkcs8 for OkpKey {
         let curve = Curve::from_pkcs8_der(der)?;
 
         if !matches!(curve, Curve::Okp(..)) {
-            // TODO: better message
             return Err(Error::Crypto("Is not a Okp key."));
         }
 
@@ -52,7 +50,6 @@ impl FromDerPemPkcs8 for OkpKey {
         let curve = Curve::from_pkcs8_pem(pem)?;
 
         if !matches!(curve, Curve::Okp(..)) {
-            // TODO: better message
             return Err(Error::Crypto("Is not a Okp key."));
         }
 

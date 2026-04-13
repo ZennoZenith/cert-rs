@@ -1,6 +1,6 @@
 [package]
 name = "cert-rs"
-version = "0.0.1"
+version = "0.0.2"
 description = "..."
 categories = ["acme"]
 authors = ["Zenno Zenith <95485961+ZennoZenith@users.noreply.github.com>"]
