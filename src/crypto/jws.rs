@@ -10,55 +10,6 @@ use crate::{
     },
 };
 
-// ── helpers ───────────────────────────────────────────────────────────────────
-//
-// /// Returns the appropriate message digest for signing the CSR.
-// ///
-// /// - RSA:     matches the key's declared signing algorithm (SHA-256/384/512)
-// /// - EC P-256 → SHA-256, P-384 → SHA-384, P-521 → SHA-512  (RFC 5480)
-// /// - Ed25519: intrinsic hash, OpenSSL uses `MessageDigest::null()`
-
-// fn sign(key: &Key, msg: &[u8]) -> Result<Vec<u8>> {
-//     match key {
-//         Key::Rsa { key, .. } => {
-//             // RS256 = SHA-256 internally handled by SigningKey
-//             let signing_key = SigningKey::<Sha256>::from(key.key);
-
-//             let signature = signing_key.sign(msg);
-
-//             let jws_signature = b64(&signature);
-//             Ok(signer.sign_to_vec().map_err(|_| Error::Crypto("Signing Failed"))?)
-//         }
-
-//         Key::Ec { crv, key } => {
-//             // Optimise:
-//             let keypair = PKey::from_ec_key(key.clone())
-//                 .map_err(|_| Error::Crypto("Cannot create PKey<Private> from EC"))?;
-
-//             let mut signer =
-//                 Signer::new(md, &keypair).map_err(|_| Error::Crypto("Signing Failed"))?;
-
-//             signer.update(msg).map_err(|_| Error::Crypto("Signing Failed"))?;
-
-//             let der_sig = signer.sign_to_vec().map_err(|_| Error::Crypto("Signing Failed"))?;
-
-//             // IMPORTANT: convert DER → raw (r || s)
-//             Ok(ecdsa_der_to_raw(&der_sig, *crv).map_err(|_| Error::Crypto("Signing Failed"))?)
-//         }
-
-//         Key::Okp { key, .. } => {
-//             let mut signer = Signer::new_without_digest(key)
-//                 .map_err(|_| Error::Crypto("Cannot create PKey<Private> from OKP"))?;
-
-//             let signature = signer
-//                 .sign_oneshot_to_vec(msg)
-//                 .map_err(|_| Error::Crypto("Signing Failed"))?;
-
-//             Ok(signature)
-//         }
-//     }
-// }
-
 /// | JWK Type      | ``SigningAlgorithm``        |
 /// | ------------- | --------------------------- |
 /// | RSA           | `RS256` / `RS384` / `RS512` |

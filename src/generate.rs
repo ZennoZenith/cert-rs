@@ -3,7 +3,10 @@ use rcgen::{
     PKCS_RSA_SHA256,
 };
 
-use crate::{Error, Result, crypto::rsa::RsaKeySize};
+use crate::{
+    Error, Result,
+    crypto::{ec::EcCurve, rsa::RsaKeySize},
+};
 
 /// # Errors
 ///
@@ -36,7 +39,17 @@ pub fn rsa_key_pem(key_size: RsaKeySize) -> Result<String> {
 
 /// # Errors
 ///
-pub fn p256_key_pem() -> Result<String> {
+pub fn ec_key_pem(curve: EcCurve) -> Result<String> {
+    match curve {
+        EcCurve::P256 => ec_p256_key_pem(),
+        EcCurve::P384 => ec_p384_key_pem(),
+        EcCurve::P521 => ec_p521_key_pem(),
+    }
+}
+
+/// # Errors
+///
+pub fn ec_p256_key_pem() -> Result<String> {
     let key = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
         .map_err(|e| Error::KeyGeneration(e.into()))?;
 
@@ -45,7 +58,7 @@ pub fn p256_key_pem() -> Result<String> {
 
 /// # Errors
 ///
-pub fn p984() -> Result<String> {
+pub fn ec_p384_key_pem() -> Result<String> {
     let key = KeyPair::generate_for(&PKCS_ECDSA_P384_SHA384)
         .map_err(|e| Error::KeyGeneration(e.into()))?;
 
@@ -54,7 +67,7 @@ pub fn p984() -> Result<String> {
 
 /// # Errors
 ///
-pub fn p521_key_pem() -> Result<String> {
+pub fn ec_p521_key_pem() -> Result<String> {
     let key = KeyPair::generate_for(&PKCS_ECDSA_P521_SHA512)
         .map_err(|e| Error::KeyGeneration(e.into()))?;
 

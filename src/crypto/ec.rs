@@ -21,7 +21,14 @@ pub enum EcKey {
 impl EcKey {
     /// # Errors
     ///
-    /// TODO:
+    /// - Cannot extract `x` coordinate from Ec P-256 key.
+    /// - Cannot extract `y` coordinate from Ec P-256 key.
+    ///
+    /// - Cannot extract `x` coordinate from Ec P-384 key.
+    /// - Cannot extract `y` coordinate from Ec P-384 key.
+    ///
+    /// - Cannot extract `x` coordinate from Ec P-521 key.
+    /// - Cannot extract `y` coordinate from Ec P-521 key.
     pub fn b64_coordinate_x_y(&self) -> Result<(Box<str>, Box<str>)> {
         match self {
             Self::P256(key) => {
@@ -70,13 +77,6 @@ impl EcKey {
     }
 }
 
-/// # Errors
-///
-/// TODO:
-///
-/// [RFC 8555]: https://datatracker.ietf.org/doc/html/rfc8555
-/// [RFC 7517]: https://datatracker.ietf.org/doc/html/rfc7517
-/// [RFC 7518]: https://datatracker.ietf.org/doc/html/rfc7518
 impl FromDerPemPkcs8 for EcKey {
     fn from_pkcs8_der(der: &[u8]) -> Result<Self>
     where
@@ -186,32 +186,6 @@ impl Signer for EcKey {
         }
     }
 }
-
-// pub(crate) fn ecdsa_der_to_raw(der: &[u8], crv: EcCurve) -> Result<Vec<u8>> {
-//     use openssl::ecdsa::EcdsaSig;
-
-//     let sig =
-//         EcdsaSig::from_der(der).map_err(|_| Error::Crypto("Cannot convert der to EcdsaSig"))?;
-
-//     let size = match crv {
-//         EcCurve::P256 => 32,
-//         EcCurve::P384 => 48,
-//         EcCurve::P521 => 66,
-//     };
-
-//     let mut r = sig.r().to_vec();
-//     let mut s = sig.s().to_vec();
-
-//     // left-pad with zeros
-//     if r.len() < size {
-//         r = [vec![0; size - r.len()], r].concat();
-//     }
-//     if s.len() < size {
-//         s = [vec![0; size - s.len()], s].concat();
-//     }
-
-//     Ok([r, s].concat())
-// }
 
 /// Elliptic Curve (EC) groups used for cryptographic key generation.
 ///

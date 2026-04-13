@@ -95,7 +95,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
     };
 
     let key_1_pem = cert_rs::generate::rsa_key_pem(cert_rs::crypto::rsa::RsaKeySize::Bits2048)?;
-    let key_2_pem = cert_rs::generate::p256_key_pem()?;
+    let key_2_pem = cert_rs::generate::ec_p256_key_pem()?;
 
     let key_1 = Key::from_pkcs8_pem(&key_1_pem)?;
     let key_2 = Key::from_pkcs8_pem(&key_2_pem)?;
@@ -196,7 +196,7 @@ async fn main() -> color_eyre::eyre::Result<()> {
 
     dbg!(&order);
 
-    let domain_key_pem = cert_rs::generate::p256_key_pem()?;
+    let domain_key_pem = cert_rs::generate::ec_p256_key_pem()?;
     let domain_key = Key::from_pkcs8_pem(&domain_key_pem)?;
 
     let csr = order.finalize(&account, &domain_key).await?;

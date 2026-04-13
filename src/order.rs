@@ -194,8 +194,7 @@ pub struct Order {
     /// An array of identifier objects that the order pertains to.
     pub identifiers: Vec<Identifier>,
 
-    // TODO
-    pub profile: Option<String>,
+    pub profile: Option<Box<str>>,
 
     /// The requested value of the notBefore field in the certificate
     pub not_before: Option<TimeRfc3339>,

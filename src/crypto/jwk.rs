@@ -67,6 +67,13 @@ pub struct Jwk {
     pub(crate) thumbprint: Box<str>,
 }
 
+// impl Jwk {
+//     #[must_use]
+//     pub fn thumbprint(&self) -> &str {
+//         &self.thumbprint
+//     }
+// }
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "UPPERCASE")]
 #[serde(tag = "kty")]

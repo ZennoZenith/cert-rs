@@ -44,7 +44,6 @@
             rustc
             cargo
             pkg-config
-            openssl
             pebble
             dig
           ];

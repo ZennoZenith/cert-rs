@@ -50,16 +50,19 @@ pub struct Problem {
 
 impl fmt::Display for Problem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("API error")?;
+        write!(f, "API error:- {}: ", self.r#type)?;
+
         if let Some(detail) = &self.detail {
-            write!(f, ": {detail}")?;
+            write!(f, "{detail} ")?;
         }
 
-        write!(f, " ({})", self.r#type)?;
+        if let Some(status) = &self.status {
+            write!(f, "(HTTP {status}), ")?;
+        }
 
         if !self.subproblems.is_empty() {
             let count = self.subproblems.len();
-            write!(f, ": {count} subproblems: ")?;
+            write!(f, "{count} subproblems: ")?;
             for (i, subproblem) in self.subproblems.iter().enumerate() {
                 write!(f, "{subproblem}")?;
                 if i != count - 1 {
@@ -239,9 +242,9 @@ impl<'de> Deserialize<'de> for ProblemType {
 
 /// # Error
 ///
-/// TODO:
-/// - [``Error::MissingLocationHeader``]
-/// - [``Error::LocationHeaderNotUrl``]
+/// - Missing Location header
+/// - Cannot convert location header to string
+/// - Cannot convert location header to Url
 pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
     let location_header = headers.get(LOCATION).ok_or(Error::Str("Missing Location header"))?;
 
@@ -253,7 +256,10 @@ pub fn extract_location_header(headers: &HeaderMap) -> Result<Url> {
 }
 
 /// # Error
-/// TODO:
+///
+/// - Retry After header not found
+/// - Retry After header cannot be parsed as string
+/// - Retry After header cannot be parsed.
 pub fn extract_retry_after(headers: &HeaderMap) -> Result<DateTime<Utc>> {
     let value = headers
         .get(RETRY_AFTER)

@@ -54,6 +54,18 @@ impl RsaKey {
         })
     }
 
+    pub const fn set_signing_algo(&mut self, signing_algo: RsaSigningAlgorithm) {
+        self.signing_algo = signing_algo;
+    }
+
+    #[must_use]
+    pub fn with_signing_algo(self, signing_algo: RsaSigningAlgorithm) -> Self {
+        Self {
+            signing_algo,
+            ..self
+        }
+    }
+
     #[must_use]
     pub fn b64_modulus(&self) -> Box<str> {
         b64::b64u_encode(self.key.n().to_bytes_be()).into_boxed_str()
