@@ -25,11 +25,14 @@ strip = true
 name = "full"
 path = "examples/full.rs"
 test = true
+required-features = ["generate"]
+
 
 [[example]]
 name = "experiment"
 path = "examples/experiment.rs"
 test = true
+required-features = ["generate"]
 
 
 # [[example]]
@@ -41,16 +44,14 @@ test = true
 # name = "pebble"
 
 [dependencies]
-base64 = "0.22"
-
 chrono = "0.4"
+base64 = "0.22"
 http = "1"
 httpdate = "1.0.3"
 mime = "0.3"
 reqwest = { version = "0.13", features = ["json"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-serde_with = { version = "3" }
 strum = "0.28"
 strum_macros = "0.28"
 # time = { version = "0.3", optional = true }
@@ -64,9 +65,6 @@ tokio = { version = "1", features = [
 tracing = { version = "0.1", optional = true }
 url = { version = "2", features = ["serde"] }
 
-# openssl = { version = "0.10" }
-ring = { version = "0.17", features = ["std"] }
-aws-lc-rs = { version = "1.16" }
 
 ## Sha2 latest is 0.11 but rsa uses 0.10
 # sha2 = { version = "0.10", default-features = false, features = [
@@ -100,6 +98,7 @@ p521 = { version = "0.13", default-features = false, features = [
 ] }
 
 ed25519-dalek = { version = "2", default-features = false, features = [
+  "fast",
   "pkcs8",
   "pem",
 ] }
@@ -122,11 +121,10 @@ toml = "1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [features]
-default = ["tracing", "generate"]
+default = ["tracing"]
 tracing = ["dep:tracing"]
 generate = ["rcgen/aws_lc_rs"]
-# openssl = ["dep:openssl"]
-# aws-lc-rs = ["dep:aws-lc-rs"]
-# ring = ["dep:ring"]
+verify = ["x509-parser/verify"]
+
 # time = ["dep:time"]
 # chrone = ["dep:chrono"]
